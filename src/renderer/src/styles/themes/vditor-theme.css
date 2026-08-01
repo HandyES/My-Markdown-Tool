@@ -1,0 +1,58 @@
+/* Vditor 主题适配，使用 CSS Variables 保持与应用主题一致 */
+.vditor {
+  background-color: var(--editor-bg) !important;
+  color: var(--editor-text) !important;
+  border-color: var(--border-color) !important;
+}
+
+.vditor-toolbar {
+  background-color: var(--bg-secondary) !important;
+  border-bottom-color: var(--border-color) !important;
+}
+
+.vditor-toolbar__item {
+  color: var(--text-primary) !important;
+}
+
+.vditor-toolbar__item:hover {
+  background-color: var(--bg-tertiary) !important;
+}
+
+.vditor-reset {
+  color: var(--editor-text) !important;
+  background-color: var(--editor-bg) !important;
+}
+
+.vditor-reset code {
+  background-color: var(--code-bg) !important;
+  border-radius: 3px;
+  padding: 0.1em 0.3em;
+}
+
+.vditor-reset pre {
+  background-color: var(--code-bg) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+.vditor-outline {
+  background-color: var(--bg-secondary) !important;
+  border-color: var(--border-color) !important;
+}
+
+.vditor-outline__item {
+  color: var(--text-secondary) !important;
+}
+
+.vditor-outline__item--current {
+  color: var(--accent) !important;
+}
+
+.vditor-ir {
+  background-color: var(--editor-bg) !important;
+  color: var(--editor-text) !important;
+}
+
+.vditor-sv {
+  background-color: var(--editor-bg) !important;
+  color: var(--editor-text) !important;
+}
