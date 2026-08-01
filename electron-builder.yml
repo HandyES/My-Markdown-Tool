@@ -1,0 +1,32 @@
+appId: com.my-markdown.app
+productName: My Markdown
+copyright: Copyright © 2026
+directories:
+  output: dist
+  buildResources: resources
+files:
+  - out/**/*
+win:
+  target:
+    - target: nsis
+    - target: portable
+  icon: resources/icon.ico
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: My Markdown
+portable:
+  artifactName: MyMarkdown-Portable-${version}.exe
+fileAssociations:
+  - ext: md
+    name: Markdown
+    description: Markdown 文件
+    role: Editor
+    icon: resources/md-icon.ico
+  - ext: markdown
+    name: Markdown
+    role: Editor
+    icon: resources/md-icon.ico
