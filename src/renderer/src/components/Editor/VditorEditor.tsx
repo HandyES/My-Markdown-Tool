@@ -9,6 +9,7 @@ import 'vditor/dist/index.css'
 export function VditorEditor({
   tab,
   settings,
+  theme,
   onContentChange,
   onPasteImage,
   onInsertImage,
@@ -16,36 +17,62 @@ export function VditorEditor({
 }: {
   tab: FileTab
   settings: AppConfig['editor']
+  theme: 'light' | 'dark' | 'auto'
   onContentChange: (value: string) => void
   onPasteImage?: (blob: Blob, ext: string) => Promise<boolean>
   onInsertImage?: () => void
   onInsertTable?: () => void
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const isDark =
+    theme === 'dark' ||
+    (theme === 'auto' &&
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-color-scheme: dark)').matches)
 
-  const { vditorRef, ready, setValue, getValue, getHTML, setMode, setThemeFn, insertValue, focus } =
-    useVditor({
-      container: containerRef,
-      initialValue: tab.content,
-      initialMode: tab.mode,
-      onChange: onContentChange,
-      fontSize: settings.fontSize,
-      fontFamily: settings.fontFamily,
-      codeTheme: settings.codeTheme,
-      tabSize: settings.tabSize,
-      showLineNumber: settings.showLineNumber
-    })
+  const {
+    vditorRef,
+    ready,
+    setValue,
+    getValue,
+    getHTML,
+    setMode,
+    setThemeFn,
+    refreshMermaid,
+    insertValue,
+    focus
+  } = useVditor({
+    container: containerRef,
+    initialValue: tab.content,
+    initialMode: tab.mode,
+    initialTheme: isDark ? 'dark' : 'classic',
+    onChange: onContentChange,
+    fontSize: settings.fontSize,
+    fontFamily: settings.fontFamily,
+    codeTheme: settings.codeTheme,
+    tabSize: settings.tabSize,
+    showLineNumber: settings.showLineNumber
+  })
 
-  // 初始化时同步当前应用主题到 Vditor（深色使用深色内容主题与代码高亮，保证对比度）
+  // 初始化后同步主题（深色使用深色内容主题、代码高亮与 Mermaid 图表）
   useEffect(() => {
     if (!ready) return
-    const dark = document.documentElement.classList.contains('dark')
+    const dark = isDark
     setThemeFn(
       dark ? 'dark' : 'classic',
       dark ? 'dark' : 'light',
       dark ? 'github-dark' : settings.codeTheme
     )
-  }, [ready, setThemeFn, settings.codeTheme])
+    // Mermaid 脚本异步加载，稍后重绘以确保使用正确的亮/暗主题
+    const t1 = window.setTimeout(() => refreshMermaid(dark ? 'dark' : 'classic'), 800)
+    const t2 = window.setTimeout(() => refreshMermaid(dark ? 'dark' : 'classic'), 3000)
+    return () => {
+      window.clearTimeout(t1)
+      window.clearTimeout(t2)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, isDark, setThemeFn, refreshMermaid, settings.codeTheme])
+
 
   // tab 切换 / mode 变更同步
   useEffect(() => {
@@ -75,12 +102,15 @@ export function VditorEditor({
     w.__vditorAPI = {
       getValue,
       getHTML,
-      setTheme: (t) =>
+      setTheme: (t) => {
         setThemeFn(
           t,
           t === 'dark' ? 'dark' : 'light',
           t === 'dark' ? 'github-dark' : settings.codeTheme
-        ),
+        )
+        // 主题切换后按新主题重绘 Mermaid
+        window.setTimeout(() => refreshMermaid(t), 150)
+      },
       insertValue: (v, r) => insertValue(v, r),
       focus: () => focus()
     }
@@ -90,7 +120,7 @@ export function VditorEditor({
         w.__vditorAPI = undefined
       }
     }
-  }, [getValue, getHTML, setThemeFn, insertValue, focus, vditorRef, settings.codeTheme])
+  }, [getValue, getHTML, setThemeFn, refreshMermaid, insertValue, focus, vditorRef, settings.codeTheme])
 
   // 粘贴图片本地化
   useEffect(() => {

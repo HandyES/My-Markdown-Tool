@@ -4,6 +4,8 @@ import { useRef, useEffect, useState, useCallback } from 'react'
 import Vditor from 'vditor'
 import type { VditorMode } from '@shared/types/file'
 
+const CDN = './vditor'
+
 type VditorInstance = {
   getValue: () => string
   setValue: (v: string) => void
@@ -16,6 +18,7 @@ type VditorInstance = {
     codeTheme?: string
   ) => void
   setMode: (mode: 'ir' | 'sv' | 'wysiwyg') => void
+  getCurrentMode?: () => VditorMode
   changeMode?: (mode: 'ir' | 'sv' | 'wysiwyg') => void
   destroy?: () => void
   vditor?: { destroy?: () => void }
@@ -25,6 +28,7 @@ export type UseVditorOptions = {
   container: React.RefObject<HTMLDivElement>
   initialValue: string
   initialMode: VditorMode
+  initialTheme?: 'dark' | 'classic'
   onChange: (value: string) => void
   fontSize?: number
   fontFamily?: string
@@ -38,6 +42,7 @@ export function useVditor(opts: UseVditorOptions) {
     container,
     initialValue,
     initialMode,
+    initialTheme = 'classic',
     onChange,
     fontSize = 16,
     fontFamily,
@@ -63,11 +68,12 @@ export function useVditor(opts: UseVditorOptions) {
     const vditor = new Vditor(placeholder, {
       value: initialValue || '',
       mode: initialMode,
+      theme: initialTheme,
       height: '100%',
       width: '100%',
       placeholder: '开始书写 Markdown...',
       // 使用随应用打包的静态资源，避免 CDN 与 CSP 冲突
-      cdn: './vditor',
+      cdn: CDN,
       // 初始化完成后再标记 ready，避免过早调用实例方法
       after: () => {
         if (!disposed) setReady(true)
@@ -83,10 +89,13 @@ export function useVditor(opts: UseVditorOptions) {
       hideToolbar: false,
       preview: {
         theme: {
-          current: 'light',
+          current: initialTheme === 'dark' ? 'dark' : 'light',
           path: './vditor/dist/css/content-theme'
         },
-        hljs: { lineNumber: showLineNumber, style: codeTheme },
+        hljs: {
+          lineNumber: showLineNumber,
+          style: initialTheme === 'dark' ? 'github-dark' : codeTheme
+        },
         markdown: { toc: true, mark: true, footnotes: true, autoSpace: true },
         actions: []
       },
@@ -189,35 +198,25 @@ export function useVditor(opts: UseVditorOptions) {
     }
   }, [ready, initialMode, fontSize, fontFamily])
 
-  // 切换模式（不重建实例）
-  useEffect(() => {
-    const v = vditorRef.current
-    if (!v) return
-    try {
-      if (typeof v.changeMode === 'function') {
-        v.changeMode(modeRef.current)
-      } else if (typeof v.setMode === 'function') {
-        v.setMode(modeRef.current)
-      }
-    } catch (e) {
-      console.warn('changeMode failed', e)
-    }
-  }, [initialMode, ready])
-
+  // 切换模式（Vditor 3.x 未暴露 setMode API，通过内置 edit-mode 按钮切换）
   const setMode = useCallback((mode: VditorMode) => {
-    const v = vditorRef.current
-    if (!v) return
+    const root = container.current
+    if (!root) return
     modeRef.current = mode
-    try {
-      if (typeof v.changeMode === 'function') {
-        v.changeMode(mode)
-      } else if (typeof v.setMode === 'function') {
-        v.setMode(mode)
-      }
-    } catch (e) {
-      console.warn('setMode failed', e)
+    if (vditorRef.current?.getCurrentMode?.() === mode) return
+    const btn = root.querySelector<HTMLButtonElement>(`button[data-mode="${mode}"]`)
+    if (btn) {
+      btn.click()
+    } else {
+      console.warn('mode button not found', mode)
     }
   }, [])
+
+  // 模式变更（tab 切换 / 首次就绪）
+  useEffect(() => {
+    if (!ready) return
+    setMode(modeRef.current)
+  }, [ready, initialMode, setMode])
 
   const setValue = useCallback((value: string) => {
     const v = vditorRef.current
@@ -260,6 +259,43 @@ export function useVditor(opts: UseVditorOptions) {
     []
   )
 
+  // Vditor.setTheme 不会重绘 Mermaid，切换主题后需按新主题重新渲染
+  const refreshMermaid = useCallback((theme: 'dark' | 'classic') => {
+    const root = container.current
+    if (!root) return
+    const rendered = Array.from(
+      root.querySelectorAll<HTMLElement>('.language-mermaid')
+    ).filter((el) => !!el.querySelector('svg') || el.getAttribute('data-processed') === 'true')
+    if (rendered.length === 0) return
+    // 已渲染的 Mermaid 区块内容被替换为 SVG，需要恢复图表定义：IR 模式取相邻源码，其余按 Markdown 顺序
+    const value = vditorRef.current?.getValue() ?? ''
+    const codes = Array.from(value.matchAll(/```mermaid\s*\n([\s\S]*?)```/g)).map((m) => m[1])
+    const api = Vditor as unknown as {
+      mermaidRender?: (el: HTMLElement, cdn: string, theme: string) => void
+    }
+    if (!api.mermaidRender) return
+    const targets = new Set<HTMLElement>()
+    rendered.forEach((el, i) => {
+      let code = codes[i]
+      const preview = el.closest('.vditor-ir__preview')
+      if (preview) {
+        const sibling = preview.previousElementSibling?.querySelector('code.language-mermaid')
+        if (sibling?.textContent) code = sibling.textContent
+      }
+      el.removeAttribute('data-processed')
+      if (code !== undefined) el.textContent = code
+      const target = preview ?? el.closest('.vditor-reset')
+      if (target) targets.add(target as HTMLElement)
+    })
+    targets.forEach((el) => {
+      try {
+        api.mermaidRender?.(el, CDN, theme === 'dark' ? 'dark' : 'classic')
+      } catch (e) {
+        console.warn('mermaidRender failed', e)
+      }
+    })
+  }, [])
+
   return {
     vditorRef,
     ready,
@@ -270,6 +306,7 @@ export function useVditor(opts: UseVditorOptions) {
     focus,
     setTheme: setThemeFn,
     setMode,
-    setThemeFn
+    setThemeFn,
+    refreshMermaid
   }
 }

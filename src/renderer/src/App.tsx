@@ -800,6 +800,7 @@ export default function App() {
               key={activeTab.id}
               tab={activeTab}
               settings={config.editor}
+              theme={configTheme}
               onContentChange={(v) => updateTabContent(activeTab.id, v)}
               onPasteImage={handlePasteImage}
               onInsertImage={handleInsertImage}
