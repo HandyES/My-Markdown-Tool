@@ -25,6 +25,9 @@ export const ipc = {
   async fileSaveAs(content: string, defaultName?: string): Promise<string | null> {
     return api().fileSaveAs(content, defaultName)
   },
+  async folderListMd(dirPath: string): Promise<Array<{ name: string; path: string }>> {
+    return api().folderListMd(dirPath)
+  },
   async configGet(): Promise<unknown> {
     return api().configGet()
   },

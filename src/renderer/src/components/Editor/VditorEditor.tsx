@@ -36,12 +36,16 @@ export function VditorEditor({
       showLineNumber: settings.showLineNumber
     })
 
-  // 初始化时同步当前应用主题到 Vditor
+  // 初始化时同步当前应用主题到 Vditor（深色使用深色内容主题与代码高亮，保证对比度）
   useEffect(() => {
     if (!ready) return
     const dark = document.documentElement.classList.contains('dark')
-    setThemeFn(dark ? 'dark' : 'classic')
-  }, [ready, setThemeFn])
+    setThemeFn(
+      dark ? 'dark' : 'classic',
+      dark ? 'dark' : 'light',
+      dark ? 'github-dark' : settings.codeTheme
+    )
+  }, [ready, setThemeFn, settings.codeTheme])
 
   // tab 切换 / mode 变更同步
   useEffect(() => {
@@ -71,7 +75,12 @@ export function VditorEditor({
     w.__vditorAPI = {
       getValue,
       getHTML,
-      setTheme: (t) => setThemeFn?.(t),
+      setTheme: (t) =>
+        setThemeFn(
+          t,
+          t === 'dark' ? 'dark' : 'light',
+          t === 'dark' ? 'github-dark' : settings.codeTheme
+        ),
       insertValue: (v, r) => insertValue(v, r),
       focus: () => focus()
     }
@@ -81,7 +90,7 @@ export function VditorEditor({
         w.__vditorAPI = undefined
       }
     }
-  }, [getValue, getHTML, setThemeFn, insertValue, focus, vditorRef])
+  }, [getValue, getHTML, setThemeFn, insertValue, focus, vditorRef, settings.codeTheme])
 
   // 粘贴图片本地化
   useEffect(() => {

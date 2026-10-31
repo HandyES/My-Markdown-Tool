@@ -85,6 +85,7 @@ const api = {
   fileOpenPath: (filePath) => electron.ipcRenderer.invoke("invoke:file-open-path", filePath),
   fileSave: (filePath, content) => electron.ipcRenderer.invoke("invoke:file-save", filePath, content),
   fileSaveAs: (content, defaultName) => electron.ipcRenderer.invoke("invoke:file-save-as", content, defaultName),
+  folderListMd: (dirPath) => electron.ipcRenderer.invoke("invoke:folder-list-md", dirPath),
   // 配置操作
   configGet: () => electron.ipcRenderer.invoke("invoke:config-get"),
   configSet: (config) => electron.ipcRenderer.invoke("invoke:config-set", config),

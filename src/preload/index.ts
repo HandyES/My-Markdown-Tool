@@ -13,6 +13,8 @@ const api = {
     ipcRenderer.invoke('invoke:file-save', filePath, content),
   fileSaveAs: (content: string, defaultName?: string): Promise<string | null> =>
     ipcRenderer.invoke('invoke:file-save-as', content, defaultName),
+  folderListMd: (dirPath: string): Promise<Array<{ name: string; path: string }>> =>
+    ipcRenderer.invoke('invoke:folder-list-md', dirPath),
 
   // 配置操作
   configGet: (): Promise<unknown> => ipcRenderer.invoke('invoke:config-get'),

@@ -10,7 +10,11 @@ type VditorInstance = {
   getHTML: () => string
   insertValue: (v: string, render?: boolean) => void
   focus: () => void
-  setTheme: (theme: 'dark' | 'classic', contentTheme?: string) => void
+  setTheme: (
+    theme: 'dark' | 'classic',
+    contentTheme?: string,
+    codeTheme?: string
+  ) => void
   setMode: (mode: 'ir' | 'sv' | 'wysiwyg') => void
   changeMode?: (mode: 'ir' | 'sv' | 'wysiwyg') => void
   destroy?: () => void
@@ -244,11 +248,11 @@ export function useVditor(opts: UseVditorOptions) {
   }, [])
 
   const setThemeFn = useCallback(
-    (theme: 'dark' | 'classic', contentTheme = 'light') => {
+    (theme: 'dark' | 'classic', contentTheme = 'light', codeTheme?: string) => {
       const v = vditorRef.current
       if (!v) return
       try {
-        v.setTheme(theme, contentTheme)
+        v.setTheme(theme, contentTheme, codeTheme)
       } catch (e) {
         console.warn('setTheme failed', e)
       }

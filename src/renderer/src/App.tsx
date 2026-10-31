@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { FileTabs } from './components/Tabs/FileTabs'
 import { VditorEditor } from './components/Editor/VditorEditor'
 import { OutlinePanel } from './components/Outline/OutlinePanel'
+import { FolderPanel } from './components/Sidebar/FolderPanel'
 import { ExportDialog } from './components/Export/ExportDialog'
 import { SettingsDialog } from './components/Settings/SettingsDialog'
 import { useFileStore } from './store/fileStore'
@@ -42,6 +43,7 @@ function useWordCount(content: string): {
 export default function App() {
   const { applyTheme, setTheme, configTheme } = useTheme()
   const config = useSettingsStore((s) => s.config)
+  const configLoading = useSettingsStore((s) => s.loading)
   const loadConfig = useSettingsStore((s) => s.loadConfig)
 
   const tabs = useFileStore((s) => s.tabs)
@@ -62,6 +64,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [showOutline, setShowOutline] = useState(true)
   const imageInputRef = useRef<HTMLInputElement | null>(null)
+  const restoredRef = useRef(false)
 
   // 关闭时的提示
   const [pendingCloseTab, setPendingCloseTab] = useState<string | null>(null)
@@ -119,32 +122,28 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabs, activeTabId])
 
-  // 会话恢复
+  // 会话恢复（配置加载完成后只执行一次）
   useEffect(() => {
-    if (
-      config.session.restoreOnStartup &&
-      config.session.lastOpenFiles.length > 0 &&
-      tabs.length <= 1 &&
-      tabs[0]?.path === null &&
-      tabs[0]?.content === ''
-    ) {
-      void (async () => {
-        for (const p of config.session.lastOpenFiles) {
-          try {
-            const res = await ipc.fileOpenPath(p)
-            if (res) openTab(res.path, res.content)
-          } catch {
-            // ignore
-          }
+    if (restoredRef.current || configLoading) return
+    restoredRef.current = true
+    if (!config.session.restoreOnStartup || config.session.lastOpenFiles.length === 0) return
+
+    void (async () => {
+      for (const p of config.session.lastOpenFiles) {
+        try {
+          const res = await ipc.fileOpenPath(p)
+          if (res) openTab(res.path, res.content)
+        } catch {
+          // ignore
         }
-        // 关闭恢复前的空标签
-        const current = useFileStore.getState()
-        const empty = current.tabs.find((t) => t.path === null && t.content === '')
-        if (empty && current.tabs.length > 1) current.closeTab(empty.id)
-      })()
-    }
+      }
+      // 关闭恢复前的空标签
+      const current = useFileStore.getState()
+      const empty = current.tabs.find((t) => t.path === null && t.content === '')
+      if (empty && current.tabs.length > 1) current.closeTab(empty.id)
+    })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.session.restoreOnStartup, config.session.lastOpenFiles.length])
+  }, [configLoading, config.session.restoreOnStartup, config.session.lastOpenFiles.length])
 
   // 保存会话到 config.session.lastOpenFiles
   useEffect(() => {
@@ -152,6 +151,8 @@ export default function App() {
     const openFiles = tabs
       .filter((t) => t.path !== null)
       .map((t) => t.path as string)
+    // 只有空白的未保存标签时不清空已有会话，避免与启动恢复竞争
+    if (openFiles.length === 0) return
     // 只在确实变更时写
     const prev = config.session.lastOpenFiles.join('\n')
     const next = openFiles.join('\n')
@@ -172,6 +173,19 @@ export default function App() {
     const res = await ipc.fileOpen()
     if (res) openTab(res.path, res.content)
   }, [openTab])
+
+  const handleOpenSibling = useCallback(
+    async (filePath: string) => {
+      const existing = tabs.find((t) => t.path === filePath)
+      if (existing) {
+        useFileStore.getState().setActiveTab(existing.id)
+        return
+      }
+      const res = await ipc.fileOpenPath(filePath)
+      if (res) openTab(res.path, res.content)
+    },
+    [tabs, openTab]
+  )
 
   const handleSave = useCallback(async (): Promise<boolean> => {
     if (!activeTab) return false
@@ -701,9 +715,9 @@ export default function App() {
               ? 'bg-[var(--accent)] text-white'
               : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary')
           }
-          title="大纲面板 Ctrl+Shift+O"
+          title="侧栏（文件夹与大纲）Ctrl+Shift+O"
         >
-          大纲
+          侧栏
         </button>
         <div className="flex-1" />
         <div className="flex items-center gap-1 text-xs">
@@ -769,11 +783,19 @@ export default function App() {
           </div>
         ) : activeTab ? (
           <>
-            <OutlinePanel
-              content={activeTab.content}
-              visible={showOutline}
-              onJump={handleOutlineJump}
-            />
+            {showOutline && (
+              <aside className="w-56 shrink-0 h-full flex flex-col border-r border-[var(--border-color)] bg-bg-secondary overflow-hidden">
+                <FolderPanel
+                  filePath={activeTab.path}
+                  activePath={activeTab.path}
+                  onOpen={(p) => void handleOpenSibling(p)}
+                />
+                <OutlinePanel
+                  content={activeTab.content}
+                  onJump={handleOutlineJump}
+                />
+              </aside>
+            )}
             <VditorEditor
               key={activeTab.id}
               tab={activeTab}

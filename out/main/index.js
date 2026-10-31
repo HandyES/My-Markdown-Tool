@@ -151,7 +151,7 @@ function buildMenu() {
         },
         { type: "separator" },
         {
-          label: "大纲面板",
+          label: "侧栏",
           accelerator: "Ctrl+Shift+O",
           click: () => sendToMain("on:menu-action", "view:outline")
         },
@@ -235,7 +235,7 @@ function buildMenu() {
                 "关闭标签 Ctrl+W / 退出 Ctrl+Q",
                 "编辑：撤销 Ctrl+Z / 重做 Ctrl+Y / 查找 Ctrl+F / 替换 Ctrl+H",
                 "模式切换 Ctrl+/",
-                "主题 Ctrl+Alt+T / 大纲 Ctrl+Shift+O",
+                "主题 Ctrl+Alt+T / 侧栏（文件夹与大纲）Ctrl+Shift+O",
                 "全屏 F11 / 放大 Ctrl+= / 缩小 Ctrl+- / 重置 Ctrl+0",
                 "插入：粗体 Ctrl+B / 斜体 Ctrl+I / 链接 Ctrl+K / 图片 Ctrl+Shift+I",
                 "插入：代码块 Ctrl+Shift+K / 表格 Ctrl+T / 公式 Ctrl+Shift+M",
@@ -337,6 +337,7 @@ async function fileExists(filePath) {
 async function mkdirp(dirPath) {
   await fsMkdir(dirPath, { recursive: true });
 }
+const MD_EXTENSIONS = [".md", ".markdown", ".mdown", ".mkd"];
 function registerFileIpcHandlers() {
   electron.ipcMain.handle("invoke:file-new", async () => {
     log.info("file-new invoked");
@@ -370,6 +371,23 @@ function registerFileIpcHandlers() {
       } catch (e) {
         log.error("file-save failed", e);
         return null;
+      }
+    }
+  );
+  electron.ipcMain.handle(
+    "invoke:folder-list-md",
+    async (_event, dirPath) => {
+      try {
+        const entries = await fs__namespace.promises.readdir(dirPath, { withFileTypes: true });
+        return entries.filter(
+          (e) => e.isFile() && MD_EXTENSIONS.includes(path__namespace.extname(e.name).toLowerCase())
+        ).map((e) => ({
+          name: e.name,
+          path: path__namespace.join(dirPath, e.name)
+        })).sort((a, b) => a.name.localeCompare(b.name));
+      } catch (e) {
+        log.warn("folder-list-md failed", e);
+        return [];
       }
     }
   );

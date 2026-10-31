@@ -4,6 +4,7 @@ export interface PreloadAPI {
   fileOpenPath(filePath: string): Promise<{ path: string; content: string } | null>
   fileSave(filePath: string, content: string): Promise<string | null>
   fileSaveAs(content: string, defaultName?: string): Promise<string | null>
+  folderListMd(dirPath: string): Promise<Array<{ name: string; path: string }>>
 
   configGet(): Promise<unknown>
   configSet(config: unknown): Promise<void>

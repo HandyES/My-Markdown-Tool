@@ -41,21 +41,21 @@ function parseHeadings(content: string): Heading[] {
   return headings
 }
 
+/**
+ * 大纲面板（由外层侧栏容器负责宽度与布局）
+ */
 export function OutlinePanel({
   content,
-  visible,
   onJump
 }: {
   content: string
-  visible: boolean
   onJump: (index: number) => void
 }) {
   const headings = useMemo(() => parseHeadings(content), [content])
-  if (!visible) return null
 
   return (
-    <aside className="w-56 shrink-0 h-full flex flex-col border-r border-[var(--border-color)] bg-bg-secondary overflow-hidden">
-      <div className="h-8 shrink-0 flex items-center px-3 text-xs font-medium text-text-secondary border-b border-[var(--border-color)]">
+    <section className="flex flex-col flex-1 min-h-0">
+      <div className="h-8 shrink-0 flex items-center px-3 text-xs font-medium text-text-secondary border-b border-[var(--border-color)] border-t">
         大纲
       </div>
       <div className="flex-1 overflow-y-auto py-1">
@@ -82,6 +82,6 @@ export function OutlinePanel({
           ))
         )}
       </div>
-    </aside>
+    </section>
   )
 }
