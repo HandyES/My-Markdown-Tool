@@ -2,17 +2,19 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
+    <!-- script-src 中的 sha256 哈希仅用于放行 Vditor 以 XHR+内联方式加载的图标/数学脚本（内容固定，随版本变化需同步更新） -->
     <meta
       http-equiv="Content-Security-Policy"
       content="default-src 'self';
-               script-src 'self';
+               script-src 'self'
+                 'sha256-qR4U4J3Ne5n0m3uNzGMB/tZ3TWJUf89OlxdXqjqALDM='
+                 'sha256-x0FrZlo0Ecgf25Jfujs/yDoMXen6L64nSUC+wUZbxts=';
                style-src 'self' 'unsafe-inline';
                img-src 'self' data: file: https:;
                font-src 'self' data:;"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>My Markdown</title>
-    <meta http-equiv="Content-Security-Policy" />
   </head>
   <body>
     <div id="root"></div>

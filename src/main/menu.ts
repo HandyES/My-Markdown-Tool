@@ -60,7 +60,7 @@ export function buildMenu(): void {
           accelerator: 'Ctrl+Q',
           click: () => {
             logger.info('Quit from menu')
-            app.quit()
+            sendToMain('on:menu-action', 'app:quit')
           }
         }
       ]
@@ -74,11 +74,13 @@ export function buildMenu(): void {
         {
           label: '查找',
           accelerator: 'Ctrl+F',
+          registerAccelerator: false,
           click: () => sendToMain('on:menu-action', 'edit:find')
         },
         {
           label: '替换',
           accelerator: 'Ctrl+H',
+          registerAccelerator: false,
           click: () => sendToMain('on:menu-action', 'edit:replace')
         }
       ]
@@ -141,36 +143,43 @@ export function buildMenu(): void {
         {
           label: '粗体',
           accelerator: 'Ctrl+B',
+          registerAccelerator: false,
           click: () => sendToMain('on:menu-action', 'insert:bold')
         },
         {
           label: '斜体',
           accelerator: 'Ctrl+I',
+          registerAccelerator: false,
           click: () => sendToMain('on:menu-action', 'insert:italic')
         },
         {
           label: '链接',
           accelerator: 'Ctrl+K',
+          registerAccelerator: false,
           click: () => sendToMain('on:menu-action', 'insert:link')
         },
         {
           label: '图片',
           accelerator: 'Ctrl+Shift+I',
+          registerAccelerator: false,
           click: () => sendToMain('on:menu-action', 'insert:image')
         },
         {
           label: '代码块',
           accelerator: 'Ctrl+Shift+K',
+          registerAccelerator: false,
           click: () => sendToMain('on:menu-action', 'insert:code')
         },
         {
           label: '表格',
           accelerator: 'Ctrl+T',
+          registerAccelerator: false,
           click: () => sendToMain('on:menu-action', 'insert:table')
         },
         {
           label: '公式',
           accelerator: 'Ctrl+Shift+M',
+          registerAccelerator: false,
           click: () => sendToMain('on:menu-action', 'insert:formula')
         }
       ]

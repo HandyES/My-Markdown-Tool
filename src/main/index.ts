@@ -1,5 +1,6 @@
-import { app, shell, BrowserWindow, nativeTheme } from 'electron'
+import { app, shell, BrowserWindow, nativeTheme, ipcMain } from 'electron'
 import { join } from 'path'
+import { readFileSync, writeFileSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import logger from './lib/logger'
 import { buildMenu } from './menu'
@@ -12,6 +13,50 @@ import { registerExportIpcHandlers } from './ipc/export'
 import { registerWindowIpcHandlers } from './ipc/window'
 
 let mainWindow: BrowserWindow | null = null
+let allowClose = false
+let dirtyCount = 0
+
+interface WindowState {
+  width: number
+  height: number
+  x?: number
+  y?: number
+  isMaximized?: boolean
+}
+
+function windowStatePath(): string {
+  return join(app.getPath('userData'), 'window-state.json')
+}
+
+function loadWindowState(): WindowState | null {
+  try {
+    const raw = readFileSync(windowStatePath(), 'utf-8')
+    const state = JSON.parse(raw) as WindowState
+    if (typeof state.width !== 'number' || typeof state.height !== 'number') {
+      return null
+    }
+    return {
+      width: Math.max(800, state.width),
+      height: Math.max(600, state.height),
+      x: state.x,
+      y: state.y,
+      isMaximized: Boolean(state.isMaximized)
+    }
+  } catch {
+    return null
+  }
+}
+
+function saveWindowState(win: BrowserWindow): void {
+  try {
+    const state: WindowState = win.isMaximized()
+      ? { width: 1200, height: 800, isMaximized: true }
+      : { ...win.getBounds(), isMaximized: false }
+    writeFileSync(windowStatePath(), JSON.stringify(state))
+  } catch (e) {
+    logger.error('Save window state failed', e)
+  }
+}
 
 function sendToRenderer(channel: string, ...args: unknown[]): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -22,9 +67,13 @@ function sendToRenderer(channel: string, ...args: unknown[]): void {
 function createWindow(): void {
   logger.info('Creating main window...')
 
+  const saved = loadWindowState()
+
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width: saved?.width ?? 1200,
+    height: saved?.height ?? 800,
+    x: saved?.x,
+    y: saved?.y,
     show: false,
     autoHideMenuBar: false,
     icon: join(__dirname, '../../resources/icon.ico'),
@@ -38,8 +87,18 @@ function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => {
+    if (saved?.isMaximized) mainWindow?.maximize()
     mainWindow?.show()
     logger.info('Main window shown')
+  })
+
+  // 有未保存文件时拦截关闭，交给渲染进程弹出保存提示
+  mainWindow.on('close', (e) => {
+    if (mainWindow) saveWindowState(mainWindow)
+    if (!allowClose && dirtyCount > 0) {
+      e.preventDefault()
+      sendToRenderer('on:close-requested')
+    }
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -94,6 +153,19 @@ app.whenReady().then(() => {
   nativeTheme.themeSource = 'system'
 
   registerAllIpc()
+
+  // 渲染进程同步未保存数量，主进程据此拦截窗口关闭
+  ipcMain.handle('invoke:window-set-dirty', (_event, count: number) => {
+    dirtyCount = Math.max(0, Number(count) || 0)
+  })
+
+  // 渲染进程确认后真正关闭窗口
+  ipcMain.handle('invoke:window-close', (event) => {
+    allowClose = true
+    const win = BrowserWindow.fromWebContents(event.sender)
+    ;(win ?? mainWindow)?.close()
+  })
+
   buildMenu()
 
   setupSingleInstance((filePath) => {

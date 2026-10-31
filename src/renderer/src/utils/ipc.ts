@@ -50,6 +50,15 @@ export const ipc = {
   async showItemInFolder(filePath: string): Promise<void> {
     return api().windowShowItemInFolder(filePath)
   },
+  async setDirtyCount(count: number): Promise<void> {
+    return api().windowSetDirty(count)
+  },
+  async closeWindow(): Promise<void> {
+    return api().windowClose()
+  },
+  onCloseRequested(cb: () => void): () => void {
+    return api().onCloseRequested(cb)
+  },
   onFileOpened(cb: (p: string) => void): () => void {
     return api().onFileOpened(cb)
   },

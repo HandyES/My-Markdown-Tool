@@ -25,10 +25,13 @@ export interface PreloadAPI {
   // 窗口
   windowShowItemInFolder(filePath: string): Promise<void>
   windowGetNativeTheme(): Promise<'light' | 'dark' | 'auto'>
+  windowSetDirty(count: number): Promise<void>
+  windowClose(): Promise<void>
 
   // 事件监听
   onFileOpened(callback: (filePath: string) => void): () => void
   onMenuAction(callback: (action: string, payload?: unknown) => void): () => void
+  onCloseRequested(callback: () => void): () => void
 }
 
 declare global {

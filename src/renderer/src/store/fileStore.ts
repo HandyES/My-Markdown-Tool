@@ -1,12 +1,13 @@
 import { create } from 'zustand'
 import type { FileTab, VditorMode } from '@shared/types/file'
+import { useSettingsStore } from './settingsStore'
 
 interface FileStore {
   tabs: FileTab[]
   activeTabId: string | null
 
   // 操作
-  createNewTab: () => void
+  createNewTab: (mode?: VditorMode) => void
   openTab: (path: string, content: string) => void
   closeTab: (id: string) => void
   setActiveTab: (id: string) => void
@@ -21,7 +22,11 @@ interface FileStore {
 
 let nextId = 1
 
-function makeNewTab(id: string): FileTab {
+function defaultMode(): VditorMode {
+  return useSettingsStore.getState().config.editor.defaultMode
+}
+
+function makeNewTab(id: string, mode: VditorMode = 'ir'): FileTab {
   return {
     id,
     path: null,
@@ -29,7 +34,7 @@ function makeNewTab(id: string): FileTab {
     originalContent: '',
     name: '新建文档',
     isDirty: false,
-    mode: 'ir',
+    mode,
     scrollPosition: 0,
     cursorPosition: null
   }
@@ -39,9 +44,9 @@ export const useFileStore = create<FileStore>((set, get) => ({
   tabs: [],
   activeTabId: null,
 
-  createNewTab: () => {
+  createNewTab: (mode) => {
     const id = `tab-${Date.now()}-${nextId++}`
-    const newTab = makeNewTab(id)
+    const newTab = makeNewTab(id, mode ?? defaultMode())
     set((s) => ({
       tabs: [...s.tabs, newTab],
       activeTabId: id
@@ -64,7 +69,7 @@ export const useFileStore = create<FileStore>((set, get) => ({
       originalContent: content,
       name: basename,
       isDirty: false,
-      mode: 'ir',
+      mode: defaultMode(),
       scrollPosition: 0,
       cursorPosition: null
     }

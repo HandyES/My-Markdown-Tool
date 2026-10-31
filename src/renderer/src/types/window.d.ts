@@ -20,9 +20,12 @@ export interface PreloadAPI {
 
   windowShowItemInFolder(filePath: string): Promise<void>
   windowGetNativeTheme(): Promise<'light' | 'dark' | 'auto'>
+  windowSetDirty(count: number): Promise<void>
+  windowClose(): Promise<void>
 
   onFileOpened(callback: (filePath: string) => void): () => void
   onMenuAction(callback: (action: string, payload?: unknown) => void): () => void
+  onCloseRequested(callback: () => void): () => void
 }
 
 declare global {
