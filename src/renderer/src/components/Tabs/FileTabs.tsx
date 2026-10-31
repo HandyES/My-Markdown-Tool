@@ -85,11 +85,9 @@ export function TabItem({
 }
 
 export function FileTabs({
-  onBeforeClose,
-  openFilePrompt
+  onBeforeClose
 }: {
   onBeforeClose?: (id: string) => Promise<boolean>
-  openFilePrompt: (askSave: 'save' | 'discard') => Promise<boolean>
 }) {
   const tabs = useFileStore((s) => s.tabs)
   const activeTabId = useFileStore((s) => s.activeTabId)
@@ -102,19 +100,10 @@ export function FileTabs({
   const handleClose = async (id: string): Promise<void> => {
     const tab = tabs.find((t) => t.id === id)
     if (!tab) return
-    if (tab.isDirty) {
-      const ok = await openFilePrompt('save')
-      if (!ok) {
-        // 取消
-        const choice = await onBeforeClose?.(id)
-        if (choice === false) return
-        return
-      }
-    } else {
-      const ok = await onBeforeClose?.(id)
-      if (ok === false) return
-      closeTab(id)
-    }
+    // 未保存时由 App 弹出保存提示并返回 false；保存/放弃后再执行关闭
+    const ok = await onBeforeClose?.(id)
+    if (ok === false) return
+    closeTab(id)
   }
 
   return (

@@ -1,5 +1,6 @@
-import { ipcMain, BrowserWindow, dialog } from 'electron'
+import { ipcMain, BrowserWindow, dialog, nativeTheme } from 'electron'
 import { writeFile } from '../lib/fileSystem'
+import { readConfig } from '../lib/config'
 import logger from '../lib/logger'
 import * as path from 'path'
 
@@ -25,32 +26,120 @@ async function saveAsDialog(
   return result.filePath
 }
 
+/** 根据配置与系统主题判断当前是否为暗色 */
+async function isDarkMode(): Promise<boolean> {
+  try {
+    const cfg = await readConfig()
+    if (cfg.appearance.theme === 'dark') return true
+    if (cfg.appearance.theme === 'light') return false
+  } catch (e) {
+    logger.warn('read theme config failed', e)
+  }
+  return nativeTheme.shouldUseDarkColors
+}
+
+/** 生成与当前主题一致的导出样式 */
+function buildThemeCss(isDark: boolean): string {
+  const vars = isDark
+    ? {
+        bg: '#1e1e1e',
+        text: '#d4d4d4',
+        secondary: '#888888',
+        border: '#3c3c3c',
+        codeBg: '#2d2d2d',
+        accent: '#4daafc',
+        quote: '#9a9a9a'
+      }
+    : {
+        bg: '#ffffff',
+        text: '#1a1a1a',
+        secondary: '#666666',
+        border: '#e0e0e0',
+        codeBg: '#f8f8f8',
+        accent: '#0066cc',
+        quote: '#6a737d'
+      }
+
+  return `
+  * { box-sizing: border-box; }
+  html, body { background: ${vars.bg}; color: ${vars.text}; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    max-width: 860px; margin: 0 auto; padding: 40px 24px; line-height: 1.75;
+    font-size: 16px; word-wrap: break-word;
+  }
+  h1, h2, h3, h4, h5, h6 { color: ${vars.text}; margin: 1.4em 0 0.6em; line-height: 1.35; }
+  h1 { border-bottom: 1px solid ${vars.border}; padding-bottom: 0.3em; }
+  p { margin: 0.8em 0; }
+  a { color: ${vars.accent}; }
+  code {
+    background: ${vars.codeBg}; color: ${vars.text}; padding: 2px 6px;
+    border-radius: 3px; font-family: "Cascadia Code", Consolas, monospace;
+  }
+  pre {
+    background: ${vars.codeBg}; border: 1px solid ${vars.border}; padding: 16px;
+    border-radius: 6px; overflow-x: auto; white-space: pre-wrap; word-break: break-word;
+  }
+  pre code { background: transparent; padding: 0; }
+  blockquote {
+    border-left: 4px solid ${vars.accent}; padding-left: 16px;
+    color: ${vars.quote}; margin-left: 0;
+  }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid ${vars.border}; padding: 8px 12px; text-align: left; }
+  th { background: ${vars.codeBg}; }
+  img { max-width: 100%; height: auto; }
+  ul, ol { padding-left: 1.6em; }
+  hr { border: none; border-top: 1px solid ${vars.border}; margin: 2em 0; }
+  .vditor-copy { display: none; }
+  `
+}
+
+const PRINT_CSS = `
+  @page { size: A4; margin: 0; }
+  @media print {
+    body { padding: 16mm 14mm; margin: 0; max-width: none; }
+    pre, code { white-space: pre-wrap !important; word-break: break-word; }
+    pre, img, table { page-break-inside: avoid; }
+    h1, h2, h3, h4, h5, h6 { page-break-after: avoid; }
+    tr { page-break-inside: avoid; }
+  }
+`
+
+function buildHtmlDocument(
+  title: string,
+  html: string,
+  themeCss: string,
+  printCss = ''
+): string {
+  return `<!DOCTYPE html>
+<html lang="zh-CN"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${title}</title>
+<style>${themeCss}${printCss}</style>
+</head><body>${html}</body></html>`
+}
+
 export function registerExportIpcHandlers(): void {
   ipcMain.handle(
     'invoke:export-html',
     async (_event, html: string, defaultName: string): Promise<string | null> => {
       const outPath = await saveAsDialog(defaultName, ['html'], 'HTML')
       if (!outPath) return null
-      const fullHtml = `<!DOCTYPE html>
-<html lang="zh-CN"><head>
-<meta charset="UTF-8"><title>${path.basename(outPath, '.html')}</title>
-<style>
-body { font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; line-height: 1.7; }
-code { background: #f6f8fa; padding: 2px 6px; border-radius: 3px; }
-pre { background: #f6f8fa; padding: 16px; border-radius: 6px; overflow-x: auto; }
-blockquote { border-left: 4px solid #dfe2e5; padding-left: 16px; color: #6a737d; margin-left: 0; }
-table { border-collapse: collapse; width: 100%; }
-th, td { border: 1px solid #dfe2e5; padding: 8px 12px; }
-th { background: #f6f8fa; }
-img { max-width: 100%; }
-</style>
-</head><body>${html}</body></html>`
       try {
-        await writeFile(outPath, fullHtml)
+        const dark = await isDarkMode()
+        const doc = buildHtmlDocument(
+          path.basename(outPath, '.html'),
+          html,
+          buildThemeCss(dark)
+        )
+        await writeFile(outPath, doc)
         logger.info('html exported:', outPath)
         return outPath
       } catch (e) {
         logger.error('export-html failed', e)
+        dialog.showErrorBox('导出 HTML 失败', String(e))
         return null
       }
     }
@@ -64,6 +153,13 @@ img { max-width: 100%; }
 
       let pdfWindow: BrowserWindow | null = null
       try {
+        const dark = await isDarkMode()
+        const doc = buildHtmlDocument(
+          path.basename(outPath, '.pdf'),
+          html,
+          buildThemeCss(dark),
+          PRINT_CSS
+        )
         pdfWindow = new BrowserWindow({
           show: false,
           width: 1200,
@@ -74,31 +170,13 @@ img { max-width: 100%; }
             sandbox: true
           }
         })
-        const fullHtml = `<!DOCTYPE html>
-<html lang="zh-CN"><head>
-<meta charset="UTF-8"><title>${path.basename(outPath, '.pdf')}</title>
-<style>
-  body { font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif; margin: 0; padding: 40px; line-height: 1.7; color: #1a1a1a; }
-  code { background: #f6f8fa; padding: 2px 6px; border-radius: 3px; }
-  pre { background: #f6f8fa; padding: 16px; border-radius: 6px; overflow-x: auto; white-space: pre-wrap; }
-  blockquote { border-left: 4px solid #dfe2e5; padding-left: 16px; color: #6a737d; margin-left: 0; }
-  table { border-collapse: collapse; width: 100%; page-break-inside: auto; }
-  tr { page-break-inside: avoid; page-break-after: auto; }
-  th, td { border: 1px solid #dfe2e5; padding: 8px 12px; }
-  th { background: #f6f8fa; }
-  img { max-width: 100%; page-break-inside: avoid; }
-  h1, h2, h3, h4, h5, h6 { page-break-after: avoid; }
-  @media print { pre, code { white-space: pre-wrap !important; word-wrap: break-word; } }
-</style>
-</head><body>${html}</body></html>`
         await pdfWindow.loadURL(
-          `data:text/html;charset=UTF-8,${encodeURIComponent(fullHtml)}`
+          `data:text/html;charset=UTF-8,${encodeURIComponent(doc)}`
         )
         const buf = await pdfWindow.webContents.printToPDF({
           pageSize: 'A4',
-          margins: { marginType: 0 as unknown as undefined },
           printBackground: true,
-          pageRanges: ''
+          margins: { top: 0, bottom: 0, left: 0, right: 0 }
         })
         await writeFile(outPath, buf)
         logger.info('pdf exported:', outPath)

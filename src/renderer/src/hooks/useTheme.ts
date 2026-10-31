@@ -23,6 +23,11 @@ export function useTheme() {
     } else {
       root.classList.remove('dark')
     }
+    // 同步 Vditor 编辑器内核主题
+    const w = window as unknown as {
+      __vditorAPI?: { setTheme?: (t: 'dark' | 'classic') => void }
+    }
+    w.__vditorAPI?.setTheme?.(shouldDark ? 'dark' : 'classic')
   }, [])
 
   const setTheme = useCallback(

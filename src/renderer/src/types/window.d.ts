@@ -4,6 +4,7 @@ export interface PreloadAPI {
   fileOpenPath(filePath: string): Promise<{ path: string; content: string } | null>
   fileSave(filePath: string, content: string): Promise<string | null>
   fileSaveAs(content: string, defaultName?: string): Promise<string | null>
+  folderListMd(dirPath: string): Promise<Array<{ name: string; path: string }>>
 
   configGet(): Promise<unknown>
   configSet(config: unknown): Promise<void>
@@ -20,9 +21,12 @@ export interface PreloadAPI {
 
   windowShowItemInFolder(filePath: string): Promise<void>
   windowGetNativeTheme(): Promise<'light' | 'dark' | 'auto'>
+  windowSetDirty(count: number): Promise<void>
+  windowClose(): Promise<void>
 
   onFileOpened(callback: (filePath: string) => void): () => void
   onMenuAction(callback: (action: string, payload?: unknown) => void): () => void
+  onCloseRequested(callback: () => void): () => void
 }
 
 declare global {

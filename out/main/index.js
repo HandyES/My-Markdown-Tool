@@ -2,9 +2,9 @@
 Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 const electron = require("electron");
 const path = require("path");
+const fs = require("fs");
 const utils = require("@electron-toolkit/utils");
 const log = require("electron-log");
-const fs = require("fs");
 const util = require("util");
 function _interopNamespaceDefault(e) {
   const n = Object.create(null, { [Symbol.toStringTag]: { value: "Module" } });
@@ -86,7 +86,7 @@ function buildMenu() {
           accelerator: "Ctrl+Q",
           click: () => {
             log.info("Quit from menu");
-            electron.app.quit();
+            sendToMain("on:menu-action", "app:quit");
           }
         }
       ]
@@ -100,11 +100,13 @@ function buildMenu() {
         {
           label: "查找",
           accelerator: "Ctrl+F",
+          registerAccelerator: false,
           click: () => sendToMain("on:menu-action", "edit:find")
         },
         {
           label: "替换",
           accelerator: "Ctrl+H",
+          registerAccelerator: false,
           click: () => sendToMain("on:menu-action", "edit:replace")
         }
       ]
@@ -149,7 +151,7 @@ function buildMenu() {
         },
         { type: "separator" },
         {
-          label: "大纲面板",
+          label: "侧栏",
           accelerator: "Ctrl+Shift+O",
           click: () => sendToMain("on:menu-action", "view:outline")
         },
@@ -167,36 +169,43 @@ function buildMenu() {
         {
           label: "粗体",
           accelerator: "Ctrl+B",
+          registerAccelerator: false,
           click: () => sendToMain("on:menu-action", "insert:bold")
         },
         {
           label: "斜体",
           accelerator: "Ctrl+I",
+          registerAccelerator: false,
           click: () => sendToMain("on:menu-action", "insert:italic")
         },
         {
           label: "链接",
           accelerator: "Ctrl+K",
+          registerAccelerator: false,
           click: () => sendToMain("on:menu-action", "insert:link")
         },
         {
           label: "图片",
           accelerator: "Ctrl+Shift+I",
+          registerAccelerator: false,
           click: () => sendToMain("on:menu-action", "insert:image")
         },
         {
           label: "代码块",
           accelerator: "Ctrl+Shift+K",
+          registerAccelerator: false,
           click: () => sendToMain("on:menu-action", "insert:code")
         },
         {
           label: "表格",
           accelerator: "Ctrl+T",
+          registerAccelerator: false,
           click: () => sendToMain("on:menu-action", "insert:table")
         },
         {
           label: "公式",
           accelerator: "Ctrl+Shift+M",
+          registerAccelerator: false,
           click: () => sendToMain("on:menu-action", "insert:formula")
         }
       ]
@@ -226,7 +235,7 @@ function buildMenu() {
                 "关闭标签 Ctrl+W / 退出 Ctrl+Q",
                 "编辑：撤销 Ctrl+Z / 重做 Ctrl+Y / 查找 Ctrl+F / 替换 Ctrl+H",
                 "模式切换 Ctrl+/",
-                "主题 Ctrl+Alt+T / 大纲 Ctrl+Shift+O",
+                "主题 Ctrl+Alt+T / 侧栏（文件夹与大纲）Ctrl+Shift+O",
                 "全屏 F11 / 放大 Ctrl+= / 缩小 Ctrl+- / 重置 Ctrl+0",
                 "插入：粗体 Ctrl+B / 斜体 Ctrl+I / 链接 Ctrl+K / 图片 Ctrl+Shift+I",
                 "插入：代码块 Ctrl+Shift+K / 表格 Ctrl+T / 公式 Ctrl+Shift+M",
@@ -328,6 +337,7 @@ async function fileExists(filePath) {
 async function mkdirp(dirPath) {
   await fsMkdir(dirPath, { recursive: true });
 }
+const MD_EXTENSIONS = [".md", ".markdown", ".mdown", ".mkd"];
 function registerFileIpcHandlers() {
   electron.ipcMain.handle("invoke:file-new", async () => {
     log.info("file-new invoked");
@@ -361,6 +371,23 @@ function registerFileIpcHandlers() {
       } catch (e) {
         log.error("file-save failed", e);
         return null;
+      }
+    }
+  );
+  electron.ipcMain.handle(
+    "invoke:folder-list-md",
+    async (_event, dirPath) => {
+      try {
+        const entries = await fs__namespace.promises.readdir(dirPath, { withFileTypes: true });
+        return entries.filter(
+          (e) => e.isFile() && MD_EXTENSIONS.includes(path__namespace.extname(e.name).toLowerCase())
+        ).map((e) => ({
+          name: e.name,
+          path: path__namespace.join(dirPath, e.name)
+        })).sort((a, b) => a.name.localeCompare(b.name));
+      } catch (e) {
+        log.warn("folder-list-md failed", e);
+        return [];
       }
     }
   );
@@ -557,32 +584,104 @@ async function saveAsDialog(defaultName, extensions, description) {
   if (result.canceled || !result.filePath) return null;
   return result.filePath;
 }
+async function isDarkMode() {
+  try {
+    const cfg = await readConfig();
+    if (cfg.appearance.theme === "dark") return true;
+    if (cfg.appearance.theme === "light") return false;
+  } catch (e) {
+    log.warn("read theme config failed", e);
+  }
+  return electron.nativeTheme.shouldUseDarkColors;
+}
+function buildThemeCss(isDark) {
+  const vars = isDark ? {
+    bg: "#1e1e1e",
+    text: "#d4d4d4",
+    border: "#3c3c3c",
+    codeBg: "#2d2d2d",
+    accent: "#4daafc",
+    quote: "#9a9a9a"
+  } : {
+    bg: "#ffffff",
+    text: "#1a1a1a",
+    border: "#e0e0e0",
+    codeBg: "#f8f8f8",
+    accent: "#0066cc",
+    quote: "#6a737d"
+  };
+  return `
+  * { box-sizing: border-box; }
+  html, body { background: ${vars.bg}; color: ${vars.text}; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    max-width: 860px; margin: 0 auto; padding: 40px 24px; line-height: 1.75;
+    font-size: 16px; word-wrap: break-word;
+  }
+  h1, h2, h3, h4, h5, h6 { color: ${vars.text}; margin: 1.4em 0 0.6em; line-height: 1.35; }
+  h1 { border-bottom: 1px solid ${vars.border}; padding-bottom: 0.3em; }
+  p { margin: 0.8em 0; }
+  a { color: ${vars.accent}; }
+  code {
+    background: ${vars.codeBg}; color: ${vars.text}; padding: 2px 6px;
+    border-radius: 3px; font-family: "Cascadia Code", Consolas, monospace;
+  }
+  pre {
+    background: ${vars.codeBg}; border: 1px solid ${vars.border}; padding: 16px;
+    border-radius: 6px; overflow-x: auto; white-space: pre-wrap; word-break: break-word;
+  }
+  pre code { background: transparent; padding: 0; }
+  blockquote {
+    border-left: 4px solid ${vars.accent}; padding-left: 16px;
+    color: ${vars.quote}; margin-left: 0;
+  }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid ${vars.border}; padding: 8px 12px; text-align: left; }
+  th { background: ${vars.codeBg}; }
+  img { max-width: 100%; height: auto; }
+  ul, ol { padding-left: 1.6em; }
+  hr { border: none; border-top: 1px solid ${vars.border}; margin: 2em 0; }
+  .vditor-copy { display: none; }
+  `;
+}
+const PRINT_CSS = `
+  @page { size: A4; margin: 0; }
+  @media print {
+    body { padding: 16mm 14mm; margin: 0; max-width: none; }
+    pre, code { white-space: pre-wrap !important; word-break: break-word; }
+    pre, img, table { page-break-inside: avoid; }
+    h1, h2, h3, h4, h5, h6 { page-break-after: avoid; }
+    tr { page-break-inside: avoid; }
+  }
+`;
+function buildHtmlDocument(title, html, themeCss, printCss = "") {
+  return `<!DOCTYPE html>
+<html lang="zh-CN"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${title}</title>
+<style>${themeCss}${printCss}</style>
+</head><body>${html}</body></html>`;
+}
 function registerExportIpcHandlers() {
   electron.ipcMain.handle(
     "invoke:export-html",
     async (_event, html, defaultName) => {
       const outPath = await saveAsDialog(defaultName, ["html"], "HTML");
       if (!outPath) return null;
-      const fullHtml = `<!DOCTYPE html>
-<html lang="zh-CN"><head>
-<meta charset="UTF-8"><title>${path__namespace.basename(outPath, ".html")}</title>
-<style>
-body { font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; line-height: 1.7; }
-code { background: #f6f8fa; padding: 2px 6px; border-radius: 3px; }
-pre { background: #f6f8fa; padding: 16px; border-radius: 6px; overflow-x: auto; }
-blockquote { border-left: 4px solid #dfe2e5; padding-left: 16px; color: #6a737d; margin-left: 0; }
-table { border-collapse: collapse; width: 100%; }
-th, td { border: 1px solid #dfe2e5; padding: 8px 12px; }
-th { background: #f6f8fa; }
-img { max-width: 100%; }
-</style>
-</head><body>${html}</body></html>`;
       try {
-        await writeFile(outPath, fullHtml);
+        const dark = await isDarkMode();
+        const doc = buildHtmlDocument(
+          path__namespace.basename(outPath, ".html"),
+          html,
+          buildThemeCss(dark)
+        );
+        await writeFile(outPath, doc);
         log.info("html exported:", outPath);
         return outPath;
       } catch (e) {
         log.error("export-html failed", e);
+        electron.dialog.showErrorBox("导出 HTML 失败", String(e));
         return null;
       }
     }
@@ -594,6 +693,13 @@ img { max-width: 100%; }
       if (!outPath) return null;
       let pdfWindow = null;
       try {
+        const dark = await isDarkMode();
+        const doc = buildHtmlDocument(
+          path__namespace.basename(outPath, ".pdf"),
+          html,
+          buildThemeCss(dark),
+          PRINT_CSS
+        );
         pdfWindow = new electron.BrowserWindow({
           show: false,
           width: 1200,
@@ -604,31 +710,13 @@ img { max-width: 100%; }
             sandbox: true
           }
         });
-        const fullHtml = `<!DOCTYPE html>
-<html lang="zh-CN"><head>
-<meta charset="UTF-8"><title>${path__namespace.basename(outPath, ".pdf")}</title>
-<style>
-  body { font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif; margin: 0; padding: 40px; line-height: 1.7; color: #1a1a1a; }
-  code { background: #f6f8fa; padding: 2px 6px; border-radius: 3px; }
-  pre { background: #f6f8fa; padding: 16px; border-radius: 6px; overflow-x: auto; white-space: pre-wrap; }
-  blockquote { border-left: 4px solid #dfe2e5; padding-left: 16px; color: #6a737d; margin-left: 0; }
-  table { border-collapse: collapse; width: 100%; page-break-inside: auto; }
-  tr { page-break-inside: avoid; page-break-after: auto; }
-  th, td { border: 1px solid #dfe2e5; padding: 8px 12px; }
-  th { background: #f6f8fa; }
-  img { max-width: 100%; page-break-inside: avoid; }
-  h1, h2, h3, h4, h5, h6 { page-break-after: avoid; }
-  @media print { pre, code { white-space: pre-wrap !important; word-wrap: break-word; } }
-</style>
-</head><body>${html}</body></html>`;
         await pdfWindow.loadURL(
-          `data:text/html;charset=UTF-8,${encodeURIComponent(fullHtml)}`
+          `data:text/html;charset=UTF-8,${encodeURIComponent(doc)}`
         );
         const buf = await pdfWindow.webContents.printToPDF({
           pageSize: "A4",
-          margins: { marginType: 0 },
           printBackground: true,
-          pageRanges: ""
+          margins: { top: 0, bottom: 0, left: 0, right: 0 }
         });
         await writeFile(outPath, buf);
         log.info("pdf exported:", outPath);
@@ -681,6 +769,37 @@ function registerWindowIpcHandlers() {
   void electron.app.name;
 }
 exports.mainWindow = null;
+let allowClose = false;
+let dirtyCount = 0;
+function windowStatePath() {
+  return path.join(electron.app.getPath("userData"), "window-state.json");
+}
+function loadWindowState() {
+  try {
+    const raw = fs.readFileSync(windowStatePath(), "utf-8");
+    const state = JSON.parse(raw);
+    if (typeof state.width !== "number" || typeof state.height !== "number") {
+      return null;
+    }
+    return {
+      width: Math.max(800, state.width),
+      height: Math.max(600, state.height),
+      x: state.x,
+      y: state.y,
+      isMaximized: Boolean(state.isMaximized)
+    };
+  } catch {
+    return null;
+  }
+}
+function saveWindowState(win) {
+  try {
+    const state = win.isMaximized() ? { width: 1200, height: 800, isMaximized: true } : { ...win.getBounds(), isMaximized: false };
+    fs.writeFileSync(windowStatePath(), JSON.stringify(state));
+  } catch (e) {
+    log.error("Save window state failed", e);
+  }
+}
 function sendToRenderer(channel, ...args) {
   if (exports.mainWindow && !exports.mainWindow.isDestroyed()) {
     exports.mainWindow.webContents.send(channel, ...args);
@@ -688,9 +807,12 @@ function sendToRenderer(channel, ...args) {
 }
 function createWindow() {
   log.info("Creating main window...");
+  const saved = loadWindowState();
   exports.mainWindow = new electron.BrowserWindow({
-    width: 1200,
-    height: 800,
+    width: saved?.width ?? 1200,
+    height: saved?.height ?? 800,
+    x: saved?.x,
+    y: saved?.y,
     show: false,
     autoHideMenuBar: false,
     icon: path.join(__dirname, "../../resources/icon.ico"),
@@ -703,8 +825,16 @@ function createWindow() {
     }
   });
   exports.mainWindow.on("ready-to-show", () => {
+    if (saved?.isMaximized) exports.mainWindow?.maximize();
     exports.mainWindow?.show();
     log.info("Main window shown");
+  });
+  exports.mainWindow.on("close", (e) => {
+    if (exports.mainWindow) saveWindowState(exports.mainWindow);
+    if (!allowClose && dirtyCount > 0) {
+      e.preventDefault();
+      sendToRenderer("on:close-requested");
+    }
   });
   exports.mainWindow.webContents.setWindowOpenHandler((details) => {
     electron.shell.openExternal(details.url);
@@ -748,6 +878,14 @@ electron.app.whenReady().then(() => {
   });
   electron.nativeTheme.themeSource = "system";
   registerAllIpc();
+  electron.ipcMain.handle("invoke:window-set-dirty", (_event, count) => {
+    dirtyCount = Math.max(0, Number(count) || 0);
+  });
+  electron.ipcMain.handle("invoke:window-close", (event) => {
+    allowClose = true;
+    const win = electron.BrowserWindow.fromWebContents(event.sender);
+    (win ?? exports.mainWindow)?.close();
+  });
   buildMenu();
   setupSingleInstance((filePath) => {
     log.info("Second instance sent file:", filePath);

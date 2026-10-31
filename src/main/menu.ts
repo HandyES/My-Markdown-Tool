@@ -60,7 +60,7 @@ export function buildMenu(): void {
           accelerator: 'Ctrl+Q',
           click: () => {
             logger.info('Quit from menu')
-            app.quit()
+            sendToMain('on:menu-action', 'app:quit')
           }
         }
       ]
@@ -74,11 +74,13 @@ export function buildMenu(): void {
         {
           label: '查找',
           accelerator: 'Ctrl+F',
+          registerAccelerator: false,
           click: () => sendToMain('on:menu-action', 'edit:find')
         },
         {
           label: '替换',
           accelerator: 'Ctrl+H',
+          registerAccelerator: false,
           click: () => sendToMain('on:menu-action', 'edit:replace')
         }
       ]
@@ -123,7 +125,7 @@ export function buildMenu(): void {
         },
         { type: 'separator' },
         {
-          label: '大纲面板',
+          label: '侧栏',
           accelerator: 'Ctrl+Shift+O',
           click: () => sendToMain('on:menu-action', 'view:outline')
         },
@@ -141,36 +143,43 @@ export function buildMenu(): void {
         {
           label: '粗体',
           accelerator: 'Ctrl+B',
+          registerAccelerator: false,
           click: () => sendToMain('on:menu-action', 'insert:bold')
         },
         {
           label: '斜体',
           accelerator: 'Ctrl+I',
+          registerAccelerator: false,
           click: () => sendToMain('on:menu-action', 'insert:italic')
         },
         {
           label: '链接',
           accelerator: 'Ctrl+K',
+          registerAccelerator: false,
           click: () => sendToMain('on:menu-action', 'insert:link')
         },
         {
           label: '图片',
           accelerator: 'Ctrl+Shift+I',
+          registerAccelerator: false,
           click: () => sendToMain('on:menu-action', 'insert:image')
         },
         {
           label: '代码块',
           accelerator: 'Ctrl+Shift+K',
+          registerAccelerator: false,
           click: () => sendToMain('on:menu-action', 'insert:code')
         },
         {
           label: '表格',
           accelerator: 'Ctrl+T',
+          registerAccelerator: false,
           click: () => sendToMain('on:menu-action', 'insert:table')
         },
         {
           label: '公式',
           accelerator: 'Ctrl+Shift+M',
+          registerAccelerator: false,
           click: () => sendToMain('on:menu-action', 'insert:formula')
         }
       ]
@@ -200,7 +209,7 @@ export function buildMenu(): void {
                 '关闭标签 Ctrl+W / 退出 Ctrl+Q',
                 '编辑：撤销 Ctrl+Z / 重做 Ctrl+Y / 查找 Ctrl+F / 替换 Ctrl+H',
                 '模式切换 Ctrl+/',
-                '主题 Ctrl+Alt+T / 大纲 Ctrl+Shift+O',
+                '主题 Ctrl+Alt+T / 侧栏（文件夹与大纲）Ctrl+Shift+O',
                 '全屏 F11 / 放大 Ctrl+= / 缩小 Ctrl+- / 重置 Ctrl+0',
                 '插入：粗体 Ctrl+B / 斜体 Ctrl+I / 链接 Ctrl+K / 图片 Ctrl+Shift+I',
                 '插入：代码块 Ctrl+Shift+K / 表格 Ctrl+T / 公式 Ctrl+Shift+M',

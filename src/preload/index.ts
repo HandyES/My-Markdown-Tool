@@ -13,6 +13,8 @@ const api = {
     ipcRenderer.invoke('invoke:file-save', filePath, content),
   fileSaveAs: (content: string, defaultName?: string): Promise<string | null> =>
     ipcRenderer.invoke('invoke:file-save-as', content, defaultName),
+  folderListMd: (dirPath: string): Promise<Array<{ name: string; path: string }>> =>
+    ipcRenderer.invoke('invoke:folder-list-md', dirPath),
 
   // 配置操作
   configGet: (): Promise<unknown> => ipcRenderer.invoke('invoke:config-get'),
@@ -40,6 +42,9 @@ const api = {
     ipcRenderer.invoke('invoke:window-show-item-in-folder', filePath),
   windowGetNativeTheme: (): Promise<'light' | 'dark' | 'auto'> =>
     ipcRenderer.invoke('invoke:window-get-native-theme'),
+  windowSetDirty: (count: number): Promise<void> =>
+    ipcRenderer.invoke('invoke:window-set-dirty', count),
+  windowClose: (): Promise<void> => ipcRenderer.invoke('invoke:window-close'),
 
   // 主进程 -> 渲染进程事件监听
   onFileOpened: (callback: (filePath: string) => void): (() => void) => {
@@ -51,6 +56,11 @@ const api = {
     const listener = (_event: Electron.IpcRendererEvent, a: string, p: unknown): void => callback(a, p)
     ipcRenderer.on('on:menu-action', listener)
     return () => ipcRenderer.removeListener('on:menu-action', listener)
+  },
+  onCloseRequested: (callback: () => void): (() => void) => {
+    const listener = (): void => callback()
+    ipcRenderer.on('on:close-requested', listener)
+    return () => ipcRenderer.removeListener('on:close-requested', listener)
   }
 }
 

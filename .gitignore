@@ -1,0 +1,14 @@
+node_modules/
+.pnpm-store/
+out/
+dist/
+release/
+src/renderer/public/vditor/
+*.tsbuildinfo
+logs/
+*.log
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+electron-builder-debug.log

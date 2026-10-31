@@ -5,6 +5,7 @@ export interface PreloadAPI {
   fileOpenPath(filePath: string): Promise<{ path: string; content: string } | null>
   fileSave(filePath: string, content: string): Promise<string | null>
   fileSaveAs(content: string, defaultName?: string): Promise<string | null>
+  folderListMd(dirPath: string): Promise<Array<{ name: string; path: string }>>
 
   // 配置操作
   configGet(): Promise<unknown>
@@ -25,10 +26,13 @@ export interface PreloadAPI {
   // 窗口
   windowShowItemInFolder(filePath: string): Promise<void>
   windowGetNativeTheme(): Promise<'light' | 'dark' | 'auto'>
+  windowSetDirty(count: number): Promise<void>
+  windowClose(): Promise<void>
 
   // 事件监听
   onFileOpened(callback: (filePath: string) => void): () => void
   onMenuAction(callback: (action: string, payload?: unknown) => void): () => void
+  onCloseRequested(callback: () => void): () => void
 }
 
 declare global {

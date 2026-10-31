@@ -13,7 +13,7 @@ export default defineConfig({
     }
   },
   preload: {
-    plugins: [externalizeDepsPlugin()],
+    // 预加载脚本运行在 sandbox 中，无法 require 外部依赖，必须全部打包进产物
     resolve: {
       alias: {
         '@preload': resolve('src/preload'),

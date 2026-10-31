@@ -1,6 +1,10 @@
 import { ipcMain } from 'electron'
+import * as path from 'path'
+import * as fs from 'fs'
 import { readFile, writeFile, fileExists } from '../lib/fileSystem'
 import logger from '../lib/logger'
+
+const MD_EXTENSIONS = ['.md', '.markdown', '.mdown', '.mkd']
 
 export function registerFileIpcHandlers(): void {
   ipcMain.handle('invoke:file-new', async () => {
@@ -38,6 +42,29 @@ export function registerFileIpcHandlers(): void {
       } catch (e) {
         logger.error('file-save failed', e)
         return null
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'invoke:folder-list-md',
+    async (_event, dirPath: string): Promise<Array<{ name: string; path: string }>> => {
+      try {
+        const entries = await fs.promises.readdir(dirPath, { withFileTypes: true })
+        return entries
+          .filter(
+            (e) =>
+              e.isFile() &&
+              MD_EXTENSIONS.includes(path.extname(e.name).toLowerCase())
+          )
+          .map((e) => ({
+            name: e.name,
+            path: path.join(dirPath, e.name)
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name))
+      } catch (e) {
+        logger.warn('folder-list-md failed', e)
+        return []
       }
     }
   )

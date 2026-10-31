@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { FileTabs } from './components/Tabs/FileTabs'
 import { VditorEditor } from './components/Editor/VditorEditor'
+import { OutlinePanel } from './components/Outline/OutlinePanel'
+import { FolderPanel } from './components/Sidebar/FolderPanel'
+import { ExportDialog } from './components/Export/ExportDialog'
 import { SettingsDialog } from './components/Settings/SettingsDialog'
 import { useFileStore } from './store/fileStore'
 import { useSettingsStore } from './store/settingsStore'
@@ -40,6 +43,7 @@ function useWordCount(content: string): {
 export default function App() {
   const { applyTheme, setTheme, configTheme } = useTheme()
   const config = useSettingsStore((s) => s.config)
+  const configLoading = useSettingsStore((s) => s.loading)
   const loadConfig = useSettingsStore((s) => s.loadConfig)
 
   const tabs = useFileStore((s) => s.tabs)
@@ -47,7 +51,6 @@ export default function App() {
   const createNewTab = useFileStore((s) => s.createNewTab)
   const openTab = useFileStore((s) => s.openTab)
   const closeTab = useFileStore((s) => s.closeTab)
-  const setActiveTab = useFileStore((s) => s.setActiveTab)
   const updateTabContent = useFileStore((s) => s.updateTabContent)
   const markTabSaved = useFileStore((s) => s.markTabSaved)
   const setTabMode = useFileStore((s) => s.setTabMode)
@@ -59,6 +62,9 @@ export default function App() {
   )
 
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [showOutline, setShowOutline] = useState(true)
+  const imageInputRef = useRef<HTMLInputElement | null>(null)
+  const restoredRef = useRef(false)
 
   // 关闭时的提示
   const [pendingCloseTab, setPendingCloseTab] = useState<string | null>(null)
@@ -73,11 +79,11 @@ export default function App() {
   // 消息 toast
   const [toast, setToast] = useState<string | null>(null)
   const toastTimerRef = useRef<number | null>(null)
-  const showToast = (message: string): void => {
+  const showToast = useCallback((message: string): void => {
     setToast(message)
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
     toastTimerRef.current = window.setTimeout(() => setToast(null), 2500)
-  }
+  }, [])
 
   // 启动加载配置，初始化第一个新标签
   useEffect(() => {
@@ -86,7 +92,7 @@ export default function App() {
       await loadConfig()
       if (!mounted) return
       if (tabs.length === 0) {
-        createNewTab()
+        createNewTab(useSettingsStore.getState().config.editor.defaultMode)
       }
     })()
     return () => {
@@ -116,30 +122,28 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabs, activeTabId])
 
-  // 会话恢复
+  // 会话恢复（配置加载完成后只执行一次）
   useEffect(() => {
-    if (
-      config.session.restoreOnStartup &&
-      config.session.lastOpenFiles.length > 0 &&
-      tabs.length <= 1 &&
-      tabs[0]?.path === null &&
-      tabs[0]?.content === ''
-    ) {
-      void (async () => {
-        for (const p of config.session.lastOpenFiles) {
-          try {
-            const res = await ipc.fileOpenPath(p)
-            if (res) openTab(res.path, res.content)
-          } catch {
-            // ignore
-          }
+    if (restoredRef.current || configLoading) return
+    restoredRef.current = true
+    if (!config.session.restoreOnStartup || config.session.lastOpenFiles.length === 0) return
+
+    void (async () => {
+      for (const p of config.session.lastOpenFiles) {
+        try {
+          const res = await ipc.fileOpenPath(p)
+          if (res) openTab(res.path, res.content)
+        } catch {
+          // ignore
         }
-        // 关闭空标签
-        if (tabs[0] && tabs.length >= 2) closeTab(tabs[0].id)
-      })()
-    }
+      }
+      // 关闭恢复前的空标签
+      const current = useFileStore.getState()
+      const empty = current.tabs.find((t) => t.path === null && t.content === '')
+      if (empty && current.tabs.length > 1) current.closeTab(empty.id)
+    })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.session.restoreOnStartup])
+  }, [configLoading, config.session.restoreOnStartup, config.session.lastOpenFiles.length])
 
   // 保存会话到 config.session.lastOpenFiles
   useEffect(() => {
@@ -147,6 +151,8 @@ export default function App() {
     const openFiles = tabs
       .filter((t) => t.path !== null)
       .map((t) => t.path as string)
+    // 只有空白的未保存标签时不清空已有会话，避免与启动恢复竞争
+    if (openFiles.length === 0) return
     // 只在确实变更时写
     const prev = config.session.lastOpenFiles.join('\n')
     const next = openFiles.join('\n')
@@ -168,9 +174,22 @@ export default function App() {
     if (res) openTab(res.path, res.content)
   }, [openTab])
 
+  const handleOpenSibling = useCallback(
+    async (filePath: string) => {
+      const existing = tabs.find((t) => t.path === filePath)
+      if (existing) {
+        useFileStore.getState().setActiveTab(existing.id)
+        return
+      }
+      const res = await ipc.fileOpenPath(filePath)
+      if (res) openTab(res.path, res.content)
+    },
+    [tabs, openTab]
+  )
+
   const handleSave = useCallback(async (): Promise<boolean> => {
     if (!activeTab) return false
-    const content = getActiveValue() ?? activeTab.content
+    const content = activeTab.content
     const finalPath = activeTab.path
       ? await ipc.fileSave(activeTab.path, content)
       : await ipc.fileSaveAs(content, `${activeTab.name || 'Untitled'}.md`)
@@ -184,7 +203,7 @@ export default function App() {
 
   const handleSaveAs = useCallback(async (): Promise<boolean> => {
     if (!activeTab) return false
-    const content = getActiveValue() ?? activeTab.content
+    const content = activeTab.content
     const finalPath = await ipc.fileSaveAs(
       content,
       activeTab.path
@@ -199,14 +218,7 @@ export default function App() {
     return false
   }, [activeTab, markTabSaved])
 
-  // 获取当前 Vditor 值
-  const getActiveValue = useCallback((): string | null => {
-    const w = window as unknown as {
-      __vditorAPI?: { getValue?: () => string; getHTML?: () => string }
-    }
-    return w.__vditorAPI?.getValue?.() ?? null
-  }, [])
-
+  // 获取当前 Vditor 渲染后的 HTML
   const getActiveHTML = useCallback((): string | null => {
     const w = window as unknown as {
       __vditorAPI?: { getValue?: () => string; getHTML?: () => string }
@@ -220,7 +232,7 @@ export default function App() {
       const defaultBase = activeTab.path
         ? basename(activeTab.path).replace(/\.[^.]+$/, '')
         : activeTab.name
-      const md = getActiveValue() ?? activeTab.content
+      const md = activeTab.content
 
       setExportDialog({ open: true, message: '导出中...' })
       try {
@@ -241,7 +253,7 @@ export default function App() {
         setExportDialog({ open: false, message: '' })
       }
     },
-    [activeTab, getActiveValue, getActiveHTML]
+    [activeTab, getActiveHTML, showToast]
   )
 
   const switchTheme = useCallback(
@@ -277,30 +289,48 @@ export default function App() {
   )
 
   // ============ 图片本地化 ============
+  const insertToEditor = useCallback((text: string): void => {
+    const w = window as unknown as {
+      __vditorAPI?: {
+        insertValue?: (v: string, r?: boolean) => void
+        focus?: () => void
+      }
+    }
+    w.__vditorAPI?.focus?.()
+    w.__vditorAPI?.insertValue?.(text, true)
+  }, [])
+
   const handlePasteImage = useCallback(
     async (blob: Blob, ext: string): Promise<boolean> => {
       if (!activeTab) return false
-      if (!config.image.localize) return false
+
+      // 关闭本地化时，保留为内联 data URL
+      if (!config.image.localize) {
+        try {
+          const dataUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve(String(reader.result))
+            reader.onerror = () => reject(reader.error)
+            reader.readAsDataURL(blob)
+          })
+          insertToEditor(`\n![image](${dataUrl})\n`)
+          return true
+        } catch (e) {
+          console.error('read image failed', e)
+          showToast('图片读取失败')
+          return false
+        }
+      }
+
       if (!activeTab.path) {
-        setToastRef.current?.('请先保存文档，再粘贴图片')
-        if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
-        toastTimerRef.current = window.setTimeout(() => setToast(null), 3000)
+        showToast('请先保存文档，再粘贴图片')
         return false
       }
       try {
         const buffer = await blob.arrayBuffer()
         const relative = await ipc.imageLocalize(buffer, activeTab.path, ext)
         const name = formatNamePattern(config.image.namingPattern, new Date())
-        const md = `![${name}](${relative})`
-        // 插入到编辑器
-        const w = window as unknown as {
-          __vditorAPI?: {
-            insertValue?: (v: string, r?: boolean) => void
-            focus?: () => void
-          }
-        }
-        w.__vditorAPI?.focus?.()
-        w.__vditorAPI?.insertValue?.(`\n${md}\n`, true)
+        insertToEditor(`\n![${name}](${relative})\n`)
         showToast('图片已本地化')
         return true
       } catch (e) {
@@ -309,134 +339,150 @@ export default function App() {
         return false
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [activeTab, config.image.localize, config.image.namingPattern]
+    [activeTab, config.image.localize, config.image.namingPattern, insertToEditor, showToast]
   )
 
-  const setToastRef = useRef<(m: string) => void>(showToast)
-  setToastRef.current = showToast
+  // 插入图片：打开文件选择器
+  const handleInsertImage = useCallback((): void => {
+    imageInputRef.current?.click()
+  }, [])
+
+  const handleImageSelected = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
+      const files = e.target.files
+      if (!files || files.length === 0) return
+      for (const file of Array.from(files)) {
+        const ext = file.type.split('/')[1]?.replace('jpeg', 'jpg') || 'png'
+        // eslint-disable-next-line no-await-in-loop
+        await handlePasteImage(file, ext)
+      }
+      e.target.value = ''
+    },
+    [handlePasteImage]
+  )
+
+  const handleInsertTable = useCallback((): void => {
+    insertToEditor(
+      '\n| 列 1 | 列 2 | 列 3 |\n| --- | --- | --- |\n| 内容 | 内容 | 内容 |\n\n'
+    )
+  }, [insertToEditor])
+
+  // 大纲跳转
+  const handleOutlineJump = useCallback((index: number): void => {
+    const selectors = [
+      '.vditor-ir .vditor-reset',
+      '.vditor-wysiwyg .vditor-reset',
+      '.vditor-preview .vditor-reset'
+    ]
+    for (const sel of selectors) {
+      const root = document.querySelector(sel)
+      if (!root) continue
+      const nodes = root.querySelectorAll('h1, h2, h3, h4, h5, h6')
+      if (nodes.length > index) {
+        nodes[index].scrollIntoView({ block: 'start', behavior: 'smooth' })
+        return
+      }
+    }
+  }, [])
 
   // ============ 关闭拦截 ============
   const closeWithDirty = useCallback(
     async (id: string): Promise<boolean> => {
       const tab = tabs.find((t) => t.id === id)
       if (!tab) return true
-      if (!tab.isDirty) {
-        closeTab(id)
-        return true
-      }
-      setPendingCloseTab(id)
-      return false // 暂停关闭
-    },
-    [tabs, closeTab]
-  )
-
-  const confirmDirtyClose = useCallback(
-    async (choice: 'save' | 'discard' | 'cancel') => {
-      const id = pendingCloseTab
-      const quitAll = pendingQuit
-      setPendingCloseTab(null)
+      if (!tab.isDirty) return true
       setPendingQuit(false)
-
-      const tab = id ? tabs.find((t) => t.id === id) : null
-
-      if (choice === 'cancel') return
-
-      // 保存逻辑
-      if (choice === 'save') {
-        if (tab && id) {
-          const ok = await saveTabById(id)
-          if (!ok) return // 用户取消了保存对话框
-          closeTab(id)
-        } else if (quitAll) {
-          const dirtys = getDirtyTabs()
-          for (const t of dirtys) {
-            setActiveTab(t.id)
-            // eslint-disable-next-line no-await-in-loop
-            await saveTabById(t.id)
-            closeTab(t.id)
-          }
-        }
-      } else if (choice === 'discard') {
-        if (id) closeTab(id)
-        if (quitAll) {
-          for (const t of tabs) closeTab(t.id)
-        }
-      }
+      setPendingCloseTab(id)
+      return false // 暂停关闭，等待用户选择
     },
-    [pendingCloseTab, pendingQuit, tabs, getDirtyTabs, closeTab, setActiveTab]
+    [tabs]
   )
 
   const saveTabById = useCallback(
     async (id: string): Promise<boolean> => {
-      const t = tabs.find((x) => x.id === id)
+      const t = useFileStore.getState().tabs.find((x) => x.id === id)
       if (!t) return false
-      const content = getActiveValue() ?? t.content
       const finalPath = t.path
-        ? await ipc.fileSave(t.path, content)
-        : await ipc.fileSaveAs(content, `${t.name || 'Untitled'}.md`)
+        ? await ipc.fileSave(t.path, t.content)
+        : await ipc.fileSaveAs(t.content, `${t.name || 'Untitled'}.md`)
       if (finalPath) {
         markTabSaved(t.id, finalPath)
         return true
       }
       return false
     },
-    [tabs, getActiveValue, markTabSaved]
+    [markTabSaved]
+  )
+
+  const confirmDirtyClose = useCallback(
+    async (choice: 'save' | 'discard' | 'cancel') => {
+      const id = pendingCloseTab
+      const quitAll = pendingQuit
+
+      if (choice === 'cancel') {
+        setPendingCloseTab(null)
+        setPendingQuit(false)
+        return
+      }
+
+      if (choice === 'save') {
+        if (quitAll) {
+          const dirtys = getDirtyTabs()
+          for (const t of dirtys) {
+            // eslint-disable-next-line no-await-in-loop
+            const ok = await saveTabById(t.id)
+            if (!ok) return // 用户取消保存对话框，中止退出
+          }
+        } else if (id) {
+          const ok = await saveTabById(id)
+          if (!ok) return
+        }
+      }
+
+      setPendingCloseTab(null)
+      setPendingQuit(false)
+
+      if (quitAll) {
+        useFileStore.getState().closeAllTabs()
+        void ipc.closeWindow()
+      } else if (id) {
+        closeTab(id)
+      }
+    },
+    [pendingCloseTab, pendingQuit, getDirtyTabs, saveTabById, closeTab]
   )
 
   // ========= 退出批量弹窗 =========
   const requestQuit = useCallback(() => {
     const dirtys = getDirtyTabs()
     if (dirtys.length === 0) {
-      window.close()
+      void ipc.closeWindow()
       return
     }
     setPendingQuit(true)
     setPendingCloseTab(dirtys[0].id)
   }, [getDirtyTabs])
 
+  // 主进程拦截关闭时通知渲染进程弹出保存提示
+  useEffect(() => {
+    return ipc.onCloseRequested(() => {
+      requestQuit()
+    })
+  }, [requestQuit])
+
+  // 同步未保存数量给主进程，用于关闭拦截
+  useEffect(() => {
+    void ipc.setDirtyCount(tabs.filter((t) => t.isDirty).length)
+  }, [tabs])
+
   // ========= 快捷键 =========
+  // 其余快捷键已由主进程菜单 accelerator 统一处理，避免重复触发
   useShortcut([
-    {
-      combo: 'ctrl+n',
-      description: '新建',
-      handler: () => {
-        handleNew()
-      }
-    },
-    {
-      combo: 'ctrl+o',
-      description: '打开',
-      handler: () => {
-        void handleOpen()
-      }
-    },
-    {
-      combo: 'ctrl+s',
-      description: '保存',
-      handler: () => {
-        void handleSave()
-      }
-    },
-    {
-      combo: 'ctrl+shift+s',
-      description: '另存为',
-      handler: () => {
-        void handleSaveAs()
-      }
-    },
     {
       combo: 'ctrl+w',
       description: '关闭标签',
       handler: () => {
         if (activeTabId) void closeWithDirty(activeTabId)
-      }
-    },
-    {
-      combo: 'ctrl+q',
-      description: '退出',
-      handler: () => {
-        requestQuit()
       }
     },
     {
@@ -451,27 +497,6 @@ export default function App() {
       description: '切换主题',
       handler: () => {
         switchCycleTheme()
-      }
-    },
-    {
-      combo: 'ctrl+,',
-      description: '设置',
-      handler: () => {
-        setSettingsOpen(true)
-      }
-    },
-    {
-      combo: 'ctrl+shift+e',
-      description: '导出 HTML',
-      handler: () => {
-        void handleExport('html')
-      }
-    },
-    {
-      combo: 'ctrl+shift+p',
-      description: '导出 PDF',
-      handler: () => {
-        void handleExport('pdf')
       }
     }
   ])
@@ -525,7 +550,31 @@ export default function App() {
           void switchTheme('auto')
           break
         case 'view:outline':
-          showToast('请点击编辑器工具栏 大纲 按钮')
+          setShowOutline((v) => !v)
+          break
+        case 'insert:bold':
+          insertToEditor('**粗体文本**')
+          break
+        case 'insert:italic':
+          insertToEditor('*斜体文本*')
+          break
+        case 'insert:link':
+          insertToEditor('[链接文本](https://)')
+          break
+        case 'insert:image':
+          handleInsertImage()
+          break
+        case 'insert:code':
+          insertToEditor('\n```\n\n```\n')
+          break
+        case 'insert:table':
+          handleInsertTable()
+          break
+        case 'insert:formula':
+          insertToEditor('\n$$\n\n$$\n')
+          break
+        case 'app:quit':
+          requestQuit()
           break
         case 'settings:open':
           setSettingsOpen(true)
@@ -535,7 +584,19 @@ export default function App() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [handleNew, handleOpen, handleSave, handleSaveAs, handleExport, handleSetMode, switchTheme]
+    [
+      handleNew,
+      handleOpen,
+      handleSave,
+      handleSaveAs,
+      handleExport,
+      handleSetMode,
+      switchTheme,
+      insertToEditor,
+      handleInsertImage,
+      handleInsertTable,
+      requestQuit
+    ]
   )
 
   // ========= 自动保存 =========
@@ -591,14 +652,7 @@ export default function App() {
   return (
     <div className="h-screen w-screen flex flex-col bg-bg-primary text-text-primary font-sans overflow-hidden">
       {/* 标签栏 */}
-      <FileTabs
-        onBeforeClose={closeWithDirty}
-        openFilePrompt={async (askSave) => {
-          if (!pendingCloseTab) return false
-          await confirmDirtyClose(askSave === 'save' ? 'save' : 'discard')
-          return true
-        }}
-      />
+      <FileTabs onBeforeClose={closeWithDirty} />
 
       {/* 工具栏：模式切换 + 快捷按钮 */}
       <div className="h-9 shrink-0 flex items-center gap-2 px-3 border-b border-[var(--border-color)] bg-bg-secondary">
@@ -651,6 +705,19 @@ export default function App() {
           className="px-2 py-1 rounded text-xs text-text-secondary hover:text-text-primary hover:bg-bg-tertiary"
         >
           导出MD
+        </button>
+        <div className="w-px h-5 bg-[var(--border-color)] mx-2" />
+        <button
+          onClick={() => setShowOutline((v) => !v)}
+          className={
+            'px-2 py-1 rounded text-xs transition-colors ' +
+            (showOutline
+              ? 'bg-[var(--accent)] text-white'
+              : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary')
+          }
+          title="侧栏（文件夹与大纲）Ctrl+Shift+O"
+        >
+          侧栏
         </button>
         <div className="flex-1" />
         <div className="flex items-center gap-1 text-xs">
@@ -715,13 +782,39 @@ export default function App() {
             </div>
           </div>
         ) : activeTab ? (
-          <VditorEditor
-            key={activeTab.id}
-            tab={activeTab}
-            onContentChange={(v) => updateTabContent(activeTab.id, v)}
-            onPasteImage={handlePasteImage}
-          />
+          <>
+            {showOutline && (
+              <aside className="w-56 shrink-0 h-full flex flex-col border-r border-[var(--border-color)] bg-bg-secondary overflow-hidden">
+                <FolderPanel
+                  filePath={activeTab.path}
+                  activePath={activeTab.path}
+                  onOpen={(p) => void handleOpenSibling(p)}
+                />
+                <OutlinePanel
+                  content={activeTab.content}
+                  onJump={handleOutlineJump}
+                />
+              </aside>
+            )}
+            <VditorEditor
+              key={activeTab.id}
+              tab={activeTab}
+              settings={config.editor}
+              onContentChange={(v) => updateTabContent(activeTab.id, v)}
+              onPasteImage={handlePasteImage}
+              onInsertImage={handleInsertImage}
+              onInsertTable={handleInsertTable}
+            />
+          </>
         ) : null}
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={(e) => void handleImageSelected(e)}
+        />
       </main>
 
       {/* 状态栏 */}
@@ -756,20 +849,8 @@ export default function App() {
       {/* 设置 */}
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
 
-      {/* 导出 */}
-      <Dialog open={exportDialog.open} onOpenChange={() => {}}>
-        <DialogContent showClose={false} className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>导出</DialogTitle>
-            <DialogDescription>{exportDialog.message}</DialogDescription>
-          </DialogHeader>
-          <div className="py-2">
-            <div className="h-2 w-full bg-bg-tertiary rounded overflow-hidden">
-              <div className="h-full w-1/3 bg-[var(--accent)] animate-pulse rounded" />
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* 导出进度 */}
+      <ExportDialog open={exportDialog.open} message={exportDialog.message} />
 
       {/* 未保存关闭 / 退出 */}
       <Dialog

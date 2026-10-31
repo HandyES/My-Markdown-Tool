@@ -1,32 +1,51 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { useVditor } from '../../hooks/useVditor'
 import type { FileTab } from '@shared/types/file'
-import { Settings } from 'lucide-react'
+import type { AppConfig } from '@shared/types/config'
+import { EditorContextMenu } from './EditorContextMenu'
 
 import 'vditor/dist/index.css'
 
 export function VditorEditor({
   tab,
+  settings,
   onContentChange,
-  onPasteImage
+  onPasteImage,
+  onInsertImage,
+  onInsertTable
 }: {
   tab: FileTab
+  settings: AppConfig['editor']
   onContentChange: (value: string) => void
   onPasteImage?: (blob: Blob, ext: string) => Promise<boolean>
+  onInsertImage?: () => void
+  onInsertTable?: () => void
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const [showSettingsHint, setShowSettingsHint] = useState(false)
 
   const { vditorRef, ready, setValue, getValue, getHTML, setMode, setThemeFn, insertValue, focus } =
     useVditor({
       container: containerRef,
       initialValue: tab.content,
       initialMode: tab.mode,
-      onChange: onContentChange
+      onChange: onContentChange,
+      fontSize: settings.fontSize,
+      fontFamily: settings.fontFamily,
+      codeTheme: settings.codeTheme,
+      tabSize: settings.tabSize,
+      showLineNumber: settings.showLineNumber
     })
 
-  const setModeRef = useRef(setMode)
-  setModeRef.current = setMode
+  // 初始化时同步当前应用主题到 Vditor（深色使用深色内容主题与代码高亮，保证对比度）
+  useEffect(() => {
+    if (!ready) return
+    const dark = document.documentElement.classList.contains('dark')
+    setThemeFn(
+      dark ? 'dark' : 'classic',
+      dark ? 'dark' : 'light',
+      dark ? 'github-dark' : settings.codeTheme
+    )
+  }, [ready, setThemeFn, settings.codeTheme])
 
   // tab 切换 / mode 变更同步
   useEffect(() => {
@@ -56,7 +75,12 @@ export function VditorEditor({
     w.__vditorAPI = {
       getValue,
       getHTML,
-      setTheme: (t) => setThemeFn?.(t),
+      setTheme: (t) =>
+        setThemeFn(
+          t,
+          t === 'dark' ? 'dark' : 'light',
+          t === 'dark' ? 'github-dark' : settings.codeTheme
+        ),
       insertValue: (v, r) => insertValue(v, r),
       focus: () => focus()
     }
@@ -66,7 +90,7 @@ export function VditorEditor({
         w.__vditorAPI = undefined
       }
     }
-  }, [getValue, getHTML, setThemeFn, insertValue, focus, vditorRef])
+  }, [getValue, getHTML, setThemeFn, insertValue, focus, vditorRef, settings.codeTheme])
 
   // 粘贴图片本地化
   useEffect(() => {
@@ -82,11 +106,9 @@ export function VditorEditor({
       const file = imgItem.getAsFile()
       if (!file) return
       ev.preventDefault()
-      const ext =
-        imgItem.type.split('/')[1]?.replace('jpeg', 'jpg') || 'png'
+      const ext = imgItem.type.split('/')[1]?.replace('jpeg', 'jpg') || 'png'
       if (onPasteImage) {
-        const ok = await onPasteImage(file, ext)
-        if (ok) return
+        await onPasteImage(file, ext)
       }
     }
 
@@ -95,33 +117,48 @@ export function VditorEditor({
       root.removeEventListener('paste', handlePaste as (e: Event) => void, true)
   }, [onPasteImage, tab.id])
 
+  // 拖拽图片文件到编辑器
+  useEffect(() => {
+    const root = containerRef.current
+    if (!root) return
+
+    const handleDragOver = (e: Event): void => {
+      const ev = e as DragEvent
+      if (ev.dataTransfer?.types.includes('Files')) {
+        ev.preventDefault()
+        ev.stopImmediatePropagation()
+      }
+    }
+
+    const handleDrop = async (e: Event): Promise<void> => {
+      const ev = e as DragEvent
+      const files = ev.dataTransfer?.files
+      if (!files || files.length === 0) return
+      const imageFiles = Array.from(files).filter((f) => f.type.startsWith('image/'))
+      if (imageFiles.length === 0) return
+      ev.preventDefault()
+      ev.stopImmediatePropagation()
+      for (const file of imageFiles) {
+        const ext = file.type.split('/')[1]?.replace('jpeg', 'jpg') || 'png'
+        if (onPasteImage) await onPasteImage(file, ext)
+      }
+    }
+
+    root.addEventListener('dragover', handleDragOver, true)
+    root.addEventListener('drop', handleDrop as (e: Event) => void, true)
+    return () => {
+      root.removeEventListener('dragover', handleDragOver, true)
+      root.removeEventListener('drop', handleDrop as (e: Event) => void, true)
+    }
+  }, [onPasteImage, tab.id])
+
   return (
-    <div className="relative flex-1 h-full w-full overflow-hidden bg-bg-primary">
-      <div
-        ref={containerRef}
-        className="h-full w-full"
-        data-vditor-container
-      />
-      <button
-        onClick={() => {
-          setShowSettingsHint(true)
-        }}
-        className="absolute bottom-2 right-2 opacity-0 hover:opacity-100 transition-opacity bg-bg-secondary hover:bg-bg-tertiary text-text-secondary hover:text-text-primary rounded p-1 border border-[var(--border-color)] z-50"
-        title="设置"
-      >
-        <Settings className="w-4 h-4" />
-      </button>
-      {showSettingsHint && (
-        <div className="absolute top-2 right-2 bg-bg-secondary border border-[var(--border-color)] rounded p-2 text-xs text-text-secondary z-50 shadow">
-          提示：设置可通过菜单「设置 → 偏好设置」或快捷键 Ctrl+, 打开
-          <button
-            className="ml-2 underline"
-            onClick={() => setShowSettingsHint(false)}
-          >
-            知道了
-          </button>
-        </div>
-      )}
-    </div>
+    <EditorContextMenu
+      filePath={tab.path}
+      onInsertImage={onInsertImage}
+      onInsertTable={onInsertTable}
+    >
+      <div ref={containerRef} className="h-full w-full" data-vditor-container />
+    </EditorContextMenu>
   )
 }

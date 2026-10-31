@@ -10,7 +10,11 @@ type VditorInstance = {
   getHTML: () => string
   insertValue: (v: string, render?: boolean) => void
   focus: () => void
-  setTheme: (theme: 'dark' | 'classic', contentTheme?: string) => void
+  setTheme: (
+    theme: 'dark' | 'classic',
+    contentTheme?: string,
+    codeTheme?: string
+  ) => void
   setMode: (mode: 'ir' | 'sv' | 'wysiwyg') => void
   changeMode?: (mode: 'ir' | 'sv' | 'wysiwyg') => void
   destroy?: () => void
@@ -54,6 +58,7 @@ export function useVditor(opts: UseVditorOptions) {
     if (!container.current) return
     if (vditorRef.current) return
 
+    let disposed = false
     const placeholder = container.current
     const vditor = new Vditor(placeholder, {
       value: initialValue || '',
@@ -61,7 +66,13 @@ export function useVditor(opts: UseVditorOptions) {
       height: '100%',
       width: '100%',
       placeholder: '开始书写 Markdown...',
-      outline: { enable: true, position: 'left' },
+      // 使用随应用打包的静态资源，避免 CDN 与 CSP 冲突
+      cdn: './vditor',
+      // 初始化完成后再标记 ready，避免过早调用实例方法
+      after: () => {
+        if (!disposed) setReady(true)
+      },
+      outline: { enable: false, position: 'left' },
       toolbarConfig: { pin: true },
       counter: { enable: true, type: 'markdown' },
       tab: '\u0020'.repeat(tabSize),
@@ -72,8 +83,8 @@ export function useVditor(opts: UseVditorOptions) {
       hideToolbar: false,
       preview: {
         theme: {
-          current: initialMode === 'wysiwyg' ? 'light' : 'light',
-          path: 'https://cdn.jsdelivr.net/npm/vditor@3.10.0/dist/css/content-theme'
+          current: 'light',
+          path: './vditor/dist/css/content-theme'
         },
         hljs: { lineNumber: showLineNumber, style: codeTheme },
         markdown: { toc: true, mark: true, footnotes: true, autoSpace: true },
@@ -115,7 +126,6 @@ export function useVditor(opts: UseVditorOptions) {
             'code-theme',
             'content-theme',
             'export',
-            'outline',
             'preview',
             'fullscreen'
           ]
@@ -137,9 +147,9 @@ export function useVditor(opts: UseVditorOptions) {
     }
 
     vditorRef.current = vditor
-    setReady(true)
 
     return () => {
+      disposed = true
       try {
         const v = vditorRef.current
         if (v && typeof v.destroy === 'function') {
@@ -155,6 +165,29 @@ export function useVditor(opts: UseVditorOptions) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [container])
+
+  // 字号 / 字体实时生效（模式切换后 Vditor 会重建内容容器）
+  useEffect(() => {
+    if (!ready) return
+    const apply = (): void => {
+      const root = container.current
+      if (!root) return
+      const targets = new Set<HTMLElement>([])
+      targets.add(root)
+      root.querySelectorAll<HTMLElement>('.vditor-reset').forEach((el) => targets.add(el))
+      targets.forEach((el) => {
+        el.style.fontSize = `${fontSize}px`
+        if (fontFamily) el.style.fontFamily = fontFamily
+      })
+    }
+    apply()
+    const t1 = window.setTimeout(apply, 50)
+    const t2 = window.setTimeout(apply, 400)
+    return () => {
+      window.clearTimeout(t1)
+      window.clearTimeout(t2)
+    }
+  }, [ready, initialMode, fontSize, fontFamily])
 
   // 切换模式（不重建实例）
   useEffect(() => {
@@ -215,11 +248,11 @@ export function useVditor(opts: UseVditorOptions) {
   }, [])
 
   const setThemeFn = useCallback(
-    (theme: 'dark' | 'classic', contentTheme = 'light') => {
+    (theme: 'dark' | 'classic', contentTheme = 'light', codeTheme?: string) => {
       const v = vditorRef.current
       if (!v) return
       try {
-        v.setTheme(theme, contentTheme)
+        v.setTheme(theme, contentTheme, codeTheme)
       } catch (e) {
         console.warn('setTheme failed', e)
       }
