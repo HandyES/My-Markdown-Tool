@@ -24,6 +24,83 @@ type VditorInstance = {
   vditor?: { destroy?: () => void }
 }
 
+// Vditor 的 IR 模式会把内联 HTML（<sub>/<sup>/<mark>/<u>/<small> 等）渲染为隐藏的源码标记，
+// 只显示文本、不应用语义样式。这里把这些标记对之间的内容包进真实元素用于显示；
+// 标记文本仍保留在同一个 html-inline 容器内，因此 Lute 序列化（getValue/getHTML）不受影响。
+const INLINE_HTML_TAGS = new Set([
+  'sub',
+  'sup',
+  'mark',
+  'u',
+  'small',
+  's',
+  'ins',
+  'del',
+  'abbr',
+  'cite',
+  'q',
+  'time',
+  'b',
+  'i',
+  'em',
+  'strong'
+])
+
+const MARKER_CODE_SELECTOR = 'code.vditor-ir__marker'
+
+function patchInlineHtml(root: ParentNode): void {
+  const spans = root.querySelectorAll<HTMLElement>('span[data-type="html-inline"]')
+  if (spans.length === 0) return
+
+  const selection = document.getSelection()
+  const range =
+    selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null
+  const selectionInside = (node: Node): boolean =>
+    !!range &&
+    (node.contains(range.startContainer) || node.contains(range.endContainer))
+
+  Array.from(spans).forEach((open) => {
+    if (!open.parentElement) return
+    // 已经处理过（内部包含嵌套的 html-inline 容器）
+    if (open.querySelector('span[data-type="html-inline"]')) return
+    // 光标位于其中时保持源码标记展开，避免打断编辑
+    if (open.classList.contains('vditor-ir__node--expand')) return
+    if (selectionInside(open)) return
+
+    const code = open.querySelector(MARKER_CODE_SELECTOR)
+    if (!code) return
+    const marker = code.textContent?.trim() ?? ''
+    const match = marker.match(/^<([a-zA-Z][\w-]*)(?:\s[^>]*)?>$/)
+    if (!match) return
+    const tag = match[1].toLowerCase()
+    if (!INLINE_HTML_TAGS.has(tag)) return
+
+    let close: HTMLElement | null = null
+    for (let s = open.nextElementSibling; s; s = s.nextElementSibling) {
+      if (s instanceof HTMLElement && s.matches('span[data-type="html-inline"]')) {
+        const closeCode = s.querySelector(MARKER_CODE_SELECTOR)
+        if (closeCode && (closeCode.textContent?.trim() ?? '') === `</${tag}>`) {
+          close = s
+          break
+        }
+      }
+    }
+    if (!close) return
+    if (close.classList.contains('vditor-ir__node--expand')) return
+    if (selectionInside(close)) return
+
+    const real = document.createElement(tag)
+    let node = open.nextSibling
+    while (node && node !== close) {
+      const next = node.nextSibling
+      real.appendChild(node)
+      node = next
+    }
+    open.appendChild(real)
+    open.appendChild(close)
+  })
+}
+
 export type UseVditorOptions = {
   container: React.RefObject<HTMLDivElement>
   initialValue: string
@@ -157,8 +234,38 @@ export function useVditor(opts: UseVditorOptions) {
 
     vditorRef.current = vditor
 
+    // 内联 HTML（上下标等）显示修复：IR 重绘后把标记对之间的内容包成真实元素
+    let patchRaf = 0
+    let applyingPatch = false
+    const applyPatch = (): void => {
+      patchRaf = 0
+      if (applyingPatch || !placeholder) return
+      applyingPatch = true
+      try {
+        placeholder
+          .querySelectorAll<HTMLElement>('.vditor-ir pre.vditor-reset')
+          .forEach((el) => patchInlineHtml(el))
+      } finally {
+        applyingPatch = false
+      }
+    }
+    const schedulePatch = (): void => {
+      if (applyingPatch || patchRaf) return
+      patchRaf = window.requestAnimationFrame(applyPatch)
+    }
+    const patchObserver = new MutationObserver(schedulePatch)
+    patchObserver.observe(placeholder, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class']
+    })
+    schedulePatch()
+
     return () => {
       disposed = true
+      patchObserver.disconnect()
+      if (patchRaf) window.cancelAnimationFrame(patchRaf)
       try {
         const v = vditorRef.current
         if (v && typeof v.destroy === 'function') {
