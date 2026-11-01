@@ -23,6 +23,12 @@ import { Button } from './components/ui/button'
 import { basename } from './utils/path'
 import { formatNamePattern } from './utils/fileName'
 
+const MODE_LABELS: Record<VditorMode, string> = {
+  ir: '即时渲染',
+  sv: '分屏预览',
+  wysiwyg: '所见即所得'
+}
+
 function useWordCount(content: string): {
   chars: number
   words: number
@@ -277,7 +283,7 @@ export default function App() {
     const idx = order.indexOf(activeTab.mode)
     const next = order[(idx + 1) % order.length]
     setTabMode(activeTab.id, next)
-    showToast(`模式切换：${next}`)
+    showToast(`模式切换：${MODE_LABELS[next]}`)
   }, [activeTab, setTabMode])
 
   const handleSetMode = useCallback(
@@ -668,7 +674,7 @@ export default function App() {
                   : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary')
               }
             >
-              {m.toUpperCase()}
+              {MODE_LABELS[m]}
             </button>
           ))}
         </div>

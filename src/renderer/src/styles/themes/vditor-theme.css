@@ -120,3 +120,95 @@
   background-color: var(--bg-tertiary) !important;
   border: 1px solid var(--border-color) !important;
 }
+
+/* ========== 所见即所得：行级 HTML 语义显示 ==========
+ * 源码标记（<code data-type="html-inline">）隐藏；
+ * 内容由显示补丁包进 <font class="vd-inline-xxx">，这里为其补齐语义样式。 */
+.vditor-wysiwyg pre.vditor-reset code[data-type='html-inline'] {
+  display: none !important;
+}
+
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-sub,
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-sup,
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-small,
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-mark,
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-u,
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-s,
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-ins,
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-del,
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-abbr,
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-cite,
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-q,
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-time,
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-b,
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-i,
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-em,
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-strong,
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-kbd,
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-var,
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-samp {
+  font-family: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  border-radius: 0;
+}
+
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-sub {
+  vertical-align: sub;
+  font-size: 0.8em;
+}
+
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-sup {
+  vertical-align: super;
+  font-size: 0.8em;
+}
+
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-small {
+  font-size: 0.85em;
+}
+
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-u,
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-ins {
+  text-decoration: underline;
+}
+
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-s,
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-del {
+  text-decoration: line-through;
+}
+
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-mark {
+  background-color: rgba(250, 204, 21, 0.35);
+  padding: 0 0.15em;
+  border-radius: 2px;
+}
+
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-b,
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-strong {
+  font-weight: 700;
+}
+
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-i,
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-em {
+  font-style: italic;
+}
+
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-kbd,
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-samp,
+.vditor-wysiwyg pre.vditor-reset font.vd-inline-var {
+  display: inline-block;
+  padding: 0.1em 0.4em;
+  margin: 0 0.1em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  line-height: 1.4;
+  color: var(--editor-text, inherit);
+  background-color: var(--bg-tertiary, rgba(127, 127, 127, 0.15));
+  border: 1px solid var(--border-color, rgba(127, 127, 127, 0.4));
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  white-space: nowrap;
+}

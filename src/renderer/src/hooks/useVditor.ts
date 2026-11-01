@@ -101,6 +101,67 @@ function patchInlineHtml(root: ParentNode): void {
   })
 }
 
+// 所见即所得模式：行级 HTML 会以 <code data-type="html-inline"> 源码标记的形式显示。
+// 这里把标记对之间的文本逐个放进 <font class="vd-inline-xxx"> 用于语义显示；
+// Lute 的 DOM 序列化会把 <font> 当作纯文本，因此 getValue/getHTML 仍保持原始标签。
+// 只包裹文本节点、保留标记原位，嵌套的 HTML 标签（如 <u><strong>x</strong></u>）也能正确还原。
+const WYSIWYG_INLINE_TAGS = new Set([...INLINE_HTML_TAGS, 'kbd', 'var', 'samp'])
+
+function patchInlineHtmlWysiwyg(root: ParentNode): void {
+  const codes = root.querySelectorAll<HTMLElement>('code[data-type="html-inline"]')
+  if (codes.length === 0) return
+
+  const selection = document.getSelection()
+  const range =
+    selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null
+  const selectionInside = (node: Node): boolean =>
+    !!range &&
+    (node.contains(range.startContainer) || node.contains(range.endContainer))
+  const cleanText = (el: HTMLElement): string =>
+    (el.textContent ?? '').replace(/\u200b/g, '').trim()
+
+  Array.from(codes).forEach((open) => {
+    if (!open.parentElement) return
+    // 已处理过（内部文本已包裹）
+    if (open.classList.contains('vd-inline-source')) return
+    if (selectionInside(open)) return
+
+    const match = cleanText(open).match(/^<([a-zA-Z][\w-]*)(?:\s[^>]*)?>$/)
+    if (!match) return
+    const tag = match[1].toLowerCase()
+    if (!WYSIWYG_INLINE_TAGS.has(tag)) return
+
+    let close: HTMLElement | null = null
+    for (let s = open.nextElementSibling; s; s = s.nextElementSibling) {
+      if (s instanceof HTMLElement && s.matches('code[data-type="html-inline"]')) {
+        if (cleanText(s) === `</${tag}>`) {
+          close = s
+          break
+        }
+      }
+    }
+    if (!close || selectionInside(close)) return
+
+    const wrapClass = `vd-inline-${tag}`
+    let node = open.nextSibling
+    while (node && node !== close) {
+      const nextNode = node.nextSibling
+      if (node.nodeType === Node.TEXT_NODE) {
+        const text = node.textContent ?? ''
+        if (text.replace(/\u200b/g, '').trim() !== '') {
+          const wrap = document.createElement('font')
+          wrap.className = wrapClass
+          open.parentElement.insertBefore(wrap, node)
+          wrap.appendChild(node)
+        }
+      }
+      node = nextNode
+    }
+    open.classList.add('vd-inline-source')
+    close.classList.add('vd-inline-source')
+  })
+}
+
 export type UseVditorOptions = {
   container: React.RefObject<HTMLDivElement>
   initialValue: string
@@ -245,6 +306,9 @@ export function useVditor(opts: UseVditorOptions) {
         placeholder
           .querySelectorAll<HTMLElement>('.vditor-ir pre.vditor-reset')
           .forEach((el) => patchInlineHtml(el))
+        placeholder
+          .querySelectorAll<HTMLElement>('.vditor-wysiwyg pre.vditor-reset')
+          .forEach((el) => patchInlineHtmlWysiwyg(el))
       } finally {
         applyingPatch = false
       }
