@@ -14,13 +14,12 @@ const entries = [
   'js/highlight.js',
   'js/katex',
   'js/mathjax',
+  'js/mermaid',
   'js/i18n',
   'js/icons',
   'css',
   'images'
 ]
-
-const completeMarker = path.join(dest, 'js/icons/ant.js')
 
 // 清理旧版目录结构（曾直接复制到 public/vditor 下）
 const legacy = path.join(root, 'src/renderer/public/vditor')
@@ -41,11 +40,6 @@ function copyDir(from, to) {
 
 if (!fs.existsSync(src)) {
   console.warn('[copy-vditor] node_modules/vditor 不存在，跳过')
-  process.exit(0)
-}
-
-if (fs.existsSync(completeMarker)) {
-  console.log('[copy-vditor] 已存在，跳过复制')
   process.exit(0)
 }
 
